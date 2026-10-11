@@ -18,22 +18,39 @@ Wayland override. The portal inherits the active Game Mode or Plasma environment
 
 ## Build and repack
 
-The prepared ARM64 container requires the base image, `/work/image-path`,
-`/work/original-KERNEL`, `/work/rocknix`, `/work/frame-fw`, and
-`/artifacts/base-os-release.txt`.
+The prepared ARM64 container reuses the existing base image from
+`/work/image-path`, verified kernel output and verified Gamescope build. No
+component recompilation is required. The source checkout must be clean.
 
 ```sh
 bash scripts/pocket-evo-vm.sh start
-docker --context colima-pocket-evo exec pocket-evo-build bash /src/scripts/build-pocket-evo-kernel.sh
-docker --context colima-pocket-evo exec pocket-evo-build bash /src/scripts/repack-pocket-evo-test-image.sh
+docker --context colima-pocket-evo exec \
+  -e KERNEL_OUTPUT=/artifacts/audit-build-20261011/kernel/current \
+  -e GAMESCOPE_BUILD=/artifacts/gamescope-final-20261011/gamescope-3.16.30-pocket-evo-aarch64/build \
+  -e IMAGE_OUTPUT_DIR=/artifacts/image-final-20261011 \
+  pocket-evo-build bash /src/scripts/repack-pocket-evo-test-image.sh
 bash scripts/pocket-evo-vm.sh stop
 ```
 
-Kernel output is `/work/kernel-pocketevo/output/current`; repacking requires
-`7.2.8-pocketevo-steamos`. The repack installs the kernel, modules and runtime
-files, checks the image filesystems, and records source and file hashes.
-Compressed and ready-to-flash images are written to
-`Steam-OS-ARM-PocketEvo-build/output`. This image is for Pocket EVO only.
+Choose an unused IMAGE_OUTPUT_DIR for each run; existing directories are refused.
+The repack creates a private image copy, preserves the base image SHA256 and boot
+partition identity, and installs the verified kernel/modules/firmware,
+Gamescope+WSI+profiles, patched InputPlumber, current input mappings and EVO
+platform/audio/sleep/LED files. It uses the existing installers and retains
+LED/RGB source bytes. Gamescope file capabilities are restored after copying.
+
+`scripts/verify-pocket-evo-image.py ROOT BOOT HOME KERNEL_OUTPUT GAMESCOPE_BUILD`
+checks boot payload, installed bytes, capability values, service links in both
+/etc layers, LED preservation and CLI/library loading inside the image without
+launching a compositor. FAT and both ext4 partitions must pass read-only fsck.
+Both `.img` and `.img.xz` are exported with SHA256 manifests; streaming
+decompression must match the raw image hash. A build manifest is stored inside
+the image and next to the output. No file is written to a physical device.
+
+The current image output directory is under the sibling
+`Steam-OS-ARM-PocketEvo-build/image-final-20261011`. This image is for Pocket EVO
+only. It contains five panel mode definitions; actual rates/HDR and lifecycle
+still require hardware testing.
 
 ## Validation
 

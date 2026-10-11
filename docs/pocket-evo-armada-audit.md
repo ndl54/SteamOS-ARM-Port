@@ -243,3 +243,14 @@ Build source is exactly commit `3ad7c44339521e010fdf4e8471abb24174265f52` (Games
 Remaining blockers: no source/build/test blocker for Gamescope. Physical OLED timing, actual HDR/color/scanout, touch/session changes and sleep/resume still require EVO testing as listed above. A Gamescope-only bundle cannot expose modes absent from the running kernel/DTB. Defaults and hardware evidence limits are unchanged.
 
 Cleanup verified: root image mount was `ro,relatime,norecovery`; unmounted and loop detached. Existing builder/profile stopped again after validation, preserving caches and exported artifacts. No environment reset or source-image write.
+
+
+## Complete test-image packaging — 2026-10-11
+
+User explicitly requested one new complete image. Starting clean main `4bbef4c31104b1ceed3671e5c35c790d75ff6162`; Armada unchanged. Reusing validated kernel7.2.8, Gamescope and InputPlumber outputs without recompilation.
+
+- Updated the existing repack pipeline to require explicit validated component paths and an unused output directory. It clones the base image before any writable mount; original image and prior outputs remain untouched. The old default kernel output path no longer exists and was replaced with an explicit KERNEL_OUTPUT argument.
+- Added offline Gamescope installation (hash verification, all4 binaries, WSI+manifest, scripts/looks, udev rule, both file capabilities). Existing platform/LED/sleep installers are reused without changing protected LED files. Repack now installs the patched InputPlumber binary and current SM8550 mappings in both /etc layers and /usr/share.
+- Added image verifier for boot payload vs tested kernel, modules/firmware, all new runtime files, LED/plugin bytes, service enablement in persistent /etc, Gamescope capabilities and ELF loading. No compositor/device test is substituted.
+- Prepack checks PASS: shell syntax, Python compilation, whitespace; display installer positive path and rejection of an invalid build before writing rootfs; isolation7 + session10 regression tests. Existing Gamescope74 and core/WSI/LED regression evidence remains unchanged.
+- Progress: complete image assembly pending, followed by read-only filesystem checks, export/hash/compression verification. Output planned in sibling `Steam-OS-ARM-PocketEvo-build/image-final-20261011/`. No flash or physical device deployment authorized/performed.
