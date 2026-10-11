@@ -191,3 +191,12 @@ Implementation commit and push evidence will be appended after final repository 
 Final installer review: both new services are enabled in root /etc AND an existing SteamOS persistent /etc upper layer, matching this repository's repack layout. Actual temporary-root installation passed for both. Final binary-DTB verifier now also follows aya-keys pinctrl phandle and confirms all four GPIOs have pull-up. Pass; no recompilation needed for these verifier/installer checks.
 
 [Artifact SHA256 and final build status](audit/pocket-evo-build-results.json). Mesa unchanged: target recipe26.2.3 already wires the two A740 patches; no new Mesa build required for this change.
+
+## Commit and repository evidence
+
+- Implementation/source/tests/audit commit: `bb37da456b64d5e2b86916b5b9dff53c1c98cfd4` on existing `main`.
+- Push of implementation succeeded: `c9010f5..bb37da4 main -> main` to `origin` (`ndl54/SteamOS-ARM-Port`). No unrelated changes staged.
+- Armada remains clean on `main` at `1e2802a9101a4ba0cfff17b14ca41dec2ae5154e`; no commit/push needed.
+- Build directory remains non-Git. Logs, successful kernel/InputPlumber artifacts, incomplete Gamescope build and private compiler caches are retained.
+- Source image loop mount confirmed `ro,norecovery`, then unmounted and detached. The existing builder/profile is stopped after work, returning it to its initial stopped state. No image was modified.
+- This final documentation-only update records the implementation hash and its verified push; its own hash is available in `git log -1 -- docs/pocket-evo-armada-audit.md`.
