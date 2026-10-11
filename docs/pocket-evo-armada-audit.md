@@ -18,7 +18,7 @@ Audit started 2026-10-11. This is source/build evidence, not device validation.
 
 ## Progress
 
-A–F source comparison and implementations complete. Kernel/package and InputPlumber verified. Gamescope rebuild, all 74 Meson tests, unfiltered tests and package verification PASS in the authorized 2026-10-11 follow-up. All hardware checks remain pending. Next: test the five modes and lifecycle on EVO. See final validation below.
+A–F source comparison and implementations complete. Kernel/package and InputPlumber verified. Gamescope rebuild, all 74 Meson tests, unfiltered tests and package verification PASS in the authorized 2026-10-11 follow-up. All hardware checks remain pending. Complete image packaging also PASS in the follow-up below. Next: boot the new image and test the five modes and lifecycle on EVO. See final validation below.
 
 ## A. Buttons and controller
 
@@ -170,7 +170,7 @@ Armada InputPlumber0001 shares raw gamepad access with Waydroid by changing host
 | Actual Lua profile | PASS EVO match and three negative identity/connector cases |
 | Mode arithmetic | PASS all5 effective C timings match independent evidence JSON; no physical measurement |
 | Shell / whitespace | shell syntax and non-patch diff whitespace pass; unified patches validated by exact application |
-| Hardware / image | NOT RUN; no image creation, flashing, bootloader change or device deployment |
+| Hardware / image | Complete new test image PASS in the authorized follow-up; no hardware boot, flashing, bootloader change or device deployment |
 
 Gamescope preparation was repaired without compilation (missing pinned commit). Kernel preparation was repaired without compilation (missing default firmware path). After those repairs, each component compiled once. Gamescope's actual compiler error was initially fixed without another compilation; the user subsequently authorized the successful rebuild recorded below. Kernel/DTB success alone does not establish Steam HDR or five selectable refresh rates in the final running stack.
 
@@ -253,4 +253,19 @@ User explicitly requested one new complete image. Starting clean main `4bbef4c31
 - Added offline Gamescope installation (hash verification, all4 binaries, WSI+manifest, scripts/looks, udev rule, both file capabilities). Existing platform/LED/sleep installers are reused without changing protected LED files. Repack now installs the patched InputPlumber binary and current SM8550 mappings in both /etc layers and /usr/share.
 - Added image verifier for boot payload vs tested kernel, modules/firmware, all new runtime files, LED/plugin bytes, service enablement in persistent /etc, Gamescope capabilities and ELF loading. No compositor/device test is substituted.
 - Prepack checks PASS: shell syntax, Python compilation, whitespace; display installer positive path and rejection of an invalid build before writing rootfs; isolation7 + session10 regression tests. Existing Gamescope74 and core/WSI/LED regression evidence remains unchanged.
-- Progress: complete image assembly pending, followed by read-only filesystem checks, export/hash/compression verification. Output planned in sibling `Steam-OS-ARM-PocketEvo-build/image-final-20261011/`. No flash or physical device deployment authorized/performed.
+- Assembly PASS from source commit `355000e`:537 installed files compared, kernel boot payload preserved except real root cmdline, Gamescope/InputPlumber CLI and all ELF relocations PASS, both Gamescope capabilities and persistent service links PASS. FAT BOOT and both ext4 root/home filesystems pass read-only checks. Raw image export and SHA256 verification PASS (`8dda54a1b8b7f07b8702ebf9301685160e18a839d3ac2854a83f40cd16166f36`); compression/integrity verification PASS in sibling `Steam-OS-ARM-PocketEvo-build/image-final-20261011/`. No flash or physical device deployment performed.
+
+
+### Complete-image result
+
+- **PASS, pipeline exit0**. All components were reused from their validated builds; no kernel/Gamescope/InputPlumber recompilation. The image pipeline was executed once after its packaging changes.
+- New raw image: `image-final-20261011/steamos-pocketevo-v1.3.2-355000e-armada-complete-test.img` under the build workspace. Size19412287488 bytes; SHA256 `8dda54a1b8b7f07b8702ebf9301685160e18a839d3ac2854a83f40cd16166f36`.
+- Compressed image: same path plus `.xz`; SHA256 `98678cd5d9b072d17e907fb0fde1ba6b3177e0521299a19febddd32017976488`. Exact sizes and checks are in [image results](audit/pocket-evo-image-results.json).
+- Read-only FAT/ext4 filesystem checks and final exported partition-table verification PASS. The exported raw image matches the private assembled image. `xz -t` PASS; streaming decompression SHA256 equals the raw image hash. No partial output remains.
+- Original base image SHA256 remained unchanged; all earlier images and the Gamescope bundle remain intact. The private working copy was removed only after verified export; all image mounts/loop devices cleaned up.
+- Build manifest is inside BOOT and rootfs and next to the output. The output directory includes README, raw/compressed checksum manifests, filesystem/build log, partition check and537-file runtime verification. Kernel release7.2.8-pocketevo-steamos, Gamescope3.16.30-steamos-arm and InputPlumber0.81.0 are present.
+- Packaging implementation `355000e` was committed and pushed to existing main before image assembly; the image records its full source hash. This final documentation update records the completed outcome.
+- LED/RGB10 protected source hashes and both installed plugin copies still match current source. The image includes the current LED implementation without source modifications.
+- Hardware remains untested: boot, actual60/90/120/144/165Hz, HDR/color/touch, Gaming/Desktop transitions and sleep/resume still require the user's EVO. No flash, device write or bootloader operation was performed.
+
+The existing builder/profile has been stopped again after successful image export, returning it to its initial state. Reusable component caches remain intact.

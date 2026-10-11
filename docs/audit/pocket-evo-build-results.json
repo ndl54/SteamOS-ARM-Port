@@ -90,5 +90,11 @@
       "size": 6680664,
       "sha256": "c4c9727a73aff9d1b8544d1f7e197873497815f31b75f36b00f22128dfe0ff82"
     }
+  },
+  "complete_image": {
+    "result": "PASS",
+    "evidence": "pocket-evo-image-results.json",
+    "artifact_directory": "../Steam-OS-ARM-PocketEvo-build/image-final-20261011",
+    "hardware": "not tested"
   }
 }

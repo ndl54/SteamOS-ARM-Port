@@ -1,0 +1,28 @@
+{
+  "result": "PASS",
+  "hardware": "not tested",
+  "kernel_release": "7.2.8-pocketevo-steamos",
+  "boot_payload": "identical to tested kernel except preserved root cmdline",
+  "files_compared": 537,
+  "capabilities": "cap_sys_nice=eip at both Gamescope paths",
+  "led_rgb": "10 protected source hashes and installed LED/plugin bytes unchanged",
+  "service_links": "root and persistent etc verified",
+  "source_commit": "355000eaa1d21b3cc4e7924caaab3a3994aa1613",
+  "artifact_directory": "../Steam-OS-ARM-PocketEvo-build/image-final-20261011",
+  "raw_image": {
+    "name": "steamos-pocketevo-v1.3.2-355000e-armada-complete-test.img",
+    "size": 19412287488,
+    "sha256": "8dda54a1b8b7f07b8702ebf9301685160e18a839d3ac2854a83f40cd16166f36"
+  },
+  "filesystems": "BOOT FAT, root ext4 and home ext4 read-only checks PASS",
+  "compression": "PASS: xz integrity test and streaming decompression SHA256 equal to raw image",
+  "original_image": "SHA256 unchanged",
+  "compressed_image": {
+    "name": "steamos-pocketevo-v1.3.2-355000e-armada-complete-test.img.xz",
+    "size": 6066165116,
+    "sha256": "98678cd5d9b072d17e907fb0fde1ba6b3177e0521299a19febddd32017976488"
+  },
+  "partition_table": "PASS: sfdisk --verify on final exported image",
+  "pipeline_exit": 0,
+  "temporary_image": "removed after verified export; no image mounts/loops remain"
+}
