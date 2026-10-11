@@ -13,15 +13,22 @@ export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 if grep -qaE "REDMAGIC 6" /sys/firmware/devicetree/base/model 2>/dev/null; then
   exit 0
 fi
-# The Pocket FIT and Pocket S2 route everything through their UCM HiFi
-# profiles (speaker, headphones, DisplayPort), with no vendor I2S path: just
-# switch between their own profiles, no mixers and no pro-audio. WirePlumber
+# The Pocket FIT, Pocket S2 and Pocket EVO route everything through UCM HiFi.
+# EVO uses WSA884x on MultiMedia2 (PCM 1), not Odin 2's MI2S path. A raw
+# pro-audio sink can be RUNNING while its speaker amplifiers remain disabled.
+# Switch between the card's own profiles, without Odin 2's vendor I2S mixers.
+# On the SM8650 devices, WirePlumber
 # alone never left "HiFi (Headphones, Speaker)" for "HiFi (HDMI0, Speaker)"
 # (same priority, both "available"), so a TV or monitor got no sound.
+POCKET_EVO=0
+if [ "$(tr -d '\0' </sys/firmware/devicetree/base/model 2>/dev/null)" = "AYANEO Pocket EVO" ]; then
+  POCKET_EVO=1
+fi
 UCM_ONLY=0
 if grep -qaE "KONKR Pocket FIT|AYANEO Pocket S2" /sys/firmware/devicetree/base/model 2>/dev/null; then
   UCM_ONLY=1
 fi
+[ "$POCKET_EVO" = 0 ] || UCM_ONLY=1
 
 MODE=once
 case "${1:-}" in
@@ -126,9 +133,10 @@ save_volume() {
 
 find_sink() {
   local pat="$1"
-  pactl_ok list short sinks | awk -v pat="$pat" 'BEGIN{IGNORECASE=1}
+  pactl_ok list short sinks | awk -v pat="$pat" -v evo="$POCKET_EVO" 'BEGIN{IGNORECASE=1}
     $2 ~ /loopback/ {next}
-    $2 ~ pat {print $2; exit}'
+    $2 ~ pat {print $2; found=1; exit}
+    END {if (evo && !found) exit 1}'
 }
 
 wait_sink() {

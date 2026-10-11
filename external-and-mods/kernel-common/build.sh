@@ -44,6 +44,9 @@ read -ra PORT_DIRS_A <<<"${PORT_DIRS:-kernel-${SOC_ARG}}"
 port_dir() { echo "${PORT_ROOT}/external-and-mods/$1"; }
 
 LOCALVERSION="${LOCALVERSION:--${KNAME}-steamos}"
+# configure writes this to CONFIG_LOCALVERSION. Kbuild also appends an exported
+# LOCALVERSION, so keep the recipe override local to avoid adding it twice.
+[[ "$SOC_ARG" != pocketevo ]] || export -n LOCALVERSION
 ROCKNIX_DIR="${ROCKNIX_DIR:-${PORT_ROOT}/../rocknix-${ROCKNIX_REF}}"
 TDDI_REF="${TDDI_REF:-af27029fa2b27c4a77d16809298ed5d03c9da5a6}"
 DTBS="${DTBS_OVERRIDE:-$DTBS}"
@@ -318,7 +321,9 @@ build_initramfs() {
   # bootlog.txt to the FAT partition. The configuration verified to boot on
   # the Pocket FIT; also the only log available when the screen stays black.
   local bb=/bin/busybox d="${WORK}/initramfs"
-  file "$bb" 2>/dev/null | grep -q "statically linked" \
+  local static_pattern='statically linked'
+  [[ "$SOC_ARG" != pocketevo ]] || static_pattern='statically linked|static-pie linked'
+  file "$bb" 2>/dev/null | grep -qE "$static_pattern" \
     || die "need a static busybox (apt install busybox-static)"
   rm -rf "$d"; mkdir -p "$d/root/bin" "$d/root/dev" "$d/root/proc" "$d/root/sys"
   cp "$bb" "$d/root/bin/busybox"

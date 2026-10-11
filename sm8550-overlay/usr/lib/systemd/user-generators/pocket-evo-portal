@@ -1,0 +1,6 @@
+#!/bin/sh
+# Mask only the vendor Wayland override on EVO, preserving session environment.
+# Normal generator output precedes /usr/lib, while user/admin overrides win.
+tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo' || exit 0
+mkdir -p "$1/plasma-xdg-desktop-portal-kde.service.d"
+ln -sfn /dev/null "$1/plasma-xdg-desktop-portal-kde.service.d/99-odin-wayland.conf"
