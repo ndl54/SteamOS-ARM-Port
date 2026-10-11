@@ -33,6 +33,7 @@
 #include "wlr_end.hpp"
 
 #include "rendervulkan.hpp"
+#include "ClientFormatPolicy.h"
 #include "main.hpp"
 #include "steamcompmgr.hpp"
 #include "log.hpp"
@@ -59,6 +60,7 @@
 
 extern bool g_bWasPartialComposite;
 extern bool g_bAllowDeferredBackend;
+extern bool g_bExposeClientSampleableFormats;
 
 static constexpr mat3x4 g_rgb2yuv_srgb_to_bt601_limited = {{
   { 0.257f, 0.504f, 0.098f, 0.0625f },
@@ -2928,11 +2930,16 @@ bool vulkan_init_format(VkFormat format, uint32_t drmFormat)
 				continue;
 			}
 
-			// The deferred backend exposes all sample-able formats as supported modifiers.
-			if ( !g_bAllowDeferredBackend )
+			const bool bBackendUsesModifiers = GetBackend()->UsesModifiers();
+			const bool bBackendSupportsModifier = !bBackendUsesModifiers ||
+				gamescope::Algorithm::Contains( GetBackend()->GetSupportedModifiers( drmFormat ), modifier );
+			if ( !gamescope::ShouldAdvertiseSampleableClientModifier(
+				g_bAllowDeferredBackend,
+				g_bExposeClientSampleableFormats,
+				bBackendUsesModifiers,
+				bBackendSupportsModifier ) )
 			{
-				if ( GetBackend()->UsesModifiers() && !gamescope::Algorithm::Contains( GetBackend()->GetSupportedModifiers( drmFormat ), modifier ) )
-					continue;
+				continue;
 			}
 
 			wlr_drm_format_set_add( &sampledDRMFormats, drmFormat, modifier );
@@ -2944,8 +2951,17 @@ bool vulkan_init_format(VkFormat format, uint32_t drmFormat)
 	}
 	else
 	{
-		if ( GetBackend()->UsesModifiers() && !GetBackend()->SupportsInvalidModifier( drmFormat ) )
+		const bool bBackendUsesModifiers = GetBackend()->UsesModifiers();
+		const bool bBackendSupportsInvalidModifier = !bBackendUsesModifiers ||
+			GetBackend()->SupportsInvalidModifier( drmFormat );
+		if ( !gamescope::ShouldAdvertiseSampleableClientModifier(
+			g_bAllowDeferredBackend,
+			g_bExposeClientSampleableFormats,
+			bBackendUsesModifiers,
+			bBackendSupportsInvalidModifier ) )
+		{
 			return false;
+		}
 
 		wlr_drm_format_set_add( &sampledDRMFormats, drmFormat, DRM_FORMAT_MOD_INVALID );
 		return false;
@@ -2954,6 +2970,16 @@ bool vulkan_init_format(VkFormat format, uint32_t drmFormat)
 
 bool vulkan_init_formats()
 {
+	if ( env_to_bool( getenv( "GAMESCOPE_EXPOSE_CLIENT_SAMPLEABLE_FORMATS" ) ) )
+	{
+		g_bExposeClientSampleableFormats = true;
+	}
+
+	if ( g_bExposeClientSampleableFormats )
+	{
+		vk_log.infof( "exposing Vulkan-sampleable client DMA-BUF formats without the output scanout intersection" );
+	}
+
 	for ( size_t i = 0; s_DRMVKFormatTable[i].DRMFormat != DRM_FORMAT_INVALID; i++ )
 	{
 		if (s_DRMVKFormatTable[i].internal)

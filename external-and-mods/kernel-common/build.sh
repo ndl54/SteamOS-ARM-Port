@@ -107,7 +107,7 @@ prepare_source() {
     fetch "https://cdn.kernel.org/pub/linux/kernel/v${KVER%%.*}.x/linux-${KVER}.tar.xz" "$tarball"
   fi
   local patch_digest pd
-  patch_digest="$( { echo "${KSRC_URL:-} $PATCH_DIRS ${PATCH_SKIP:-} ${PORT_DIRS_A[*]}"; for pd in "${PORT_DIRS_A[@]}"; do pd="$(port_dir "$pd")"; find "$pd" -path "${pd}/patches/*" -type f -o -path "${pd}/dts/*" -type f | sort; done | xargs -r sha256sum | cut -d" " -f1; } | sha256sum | cut -d" " -f1)"
+  patch_digest="$( { echo "${KSRC_URL:-} $PATCH_DIRS ${PATCH_SKIP:-} ${PORT_DIRS_A[*]} ${PATCH_FUZZ:-2} ${PATCH_OVERRIDE_DIR:-}"; for pd in "${PORT_DIRS_A[@]}"; do pd="$(port_dir "$pd")"; find "$pd" -path "${pd}/patches/*" -type f -o -path "${pd}/dts/*" -type f | sort; done | xargs -r sha256sum | cut -d" " -f1; } | sha256sum | cut -d" " -f1)"
   if [[ -f "${SRC}/.${KNAME}-patched" && "$(cat "${SRC}/.${KNAME}-patched")" == "$patch_digest" ]]; then
     log "source already patched: ${SRC}"
     return 0
@@ -146,8 +146,11 @@ prepare_source() {
       if [[ " ${PATCH_SKIP:-} " == *" $(basename "$p") "* ]]; then
         log "skip $(basename "$p") (PATCH_SKIP)"; continue
       fi
+      if [[ -n "${PATCH_OVERRIDE_DIR:-}" && -f "$PATCH_OVERRIDE_DIR/$(basename "$p")" ]]; then
+        p="$PATCH_OVERRIDE_DIR/$(basename "$p")"
+      fi
       log "patch $(basename "$d")/$(basename "$p")"
-      patch -d "$SRC" -p1 -N --no-backup-if-mismatch -s <"$p" \
+      patch -d "$SRC" -p1 -N --fuzz="${PATCH_FUZZ:-2}" --no-backup-if-mismatch -s <"$p" \
         || die "patch failed: $p"
     done
   done
@@ -410,6 +413,8 @@ main() {
     || die "ROCKNIX tree not found at ${ROCKNIX_DIR} (sparse clone of ROCKNIX/distribution@${ROCKNIX_REF})"
   mkdir -p "$CACHE"
   prepare_source
+  # Validate the complete patch/DTS chain without starting compilation.
+  [[ "${1:-}" != --prepare-only ]] || return 0
   stage_builtin_firmware
   build_initramfs
   configure

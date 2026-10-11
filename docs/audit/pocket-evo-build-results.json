@@ -1,0 +1,26 @@
+{
+  "artifact_directory": "../Steam-OS-ARM-PocketEvo-build/audit-build-20261011",
+  "kernel": "pass",
+  "inputplumber": "pass; target-rootfs version and dependencies verified",
+  "gamescope": "failed at missing namespace; source repaired, not rebuilt; C++ tests not run",
+  "hardware": "not tested",
+  "compilation_attempts_per_component": 1,
+  "files": {
+    "kernel/7.2.8-pocketevo-steamos/boot/KERNEL": {
+      "size": 19902464,
+      "sha256": "daaab12f7b61a47e886a89a284cf68f0c2c0f2d6108d9f84f47cfffc3d5af175"
+    },
+    "kernel/7.2.8-pocketevo-steamos/dtbs/qcs8550-ayaneo-pocketevo.dtb": {
+      "size": 133755,
+      "sha256": "f5717b194c4eec659258146f2f74e77cba7feb47e1146f765bcf7b9a9a314f4a"
+    },
+    "kernel/7.2.8-pocketevo-steamos/config-7.2.8-pocketevo-steamos": {
+      "size": 238492,
+      "sha256": "28147b194061f9ae4ac0842f3fe2cae54c737214d06a905d21abd3fd3bc1c52b"
+    },
+    "inputplumber/inputplumber-0.81.0-konkr": {
+      "size": 9573448,
+      "sha256": "135cfea2d5ad22111ee91ce0ea9c68d57535030d9bcf7e27a7e9a1283a8fc384"
+    }
+  }
+}

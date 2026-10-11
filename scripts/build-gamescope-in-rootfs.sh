@@ -2,8 +2,8 @@
 # Build our MSM gamescope *inside* the Frame rootfs (glibc 2.39, Frame
 # wlroots/libdrm/vulkan), like build-box64-in-rootfs.sh.
 #
-# The vendored MSM port targets upstream 6edb42b (3.16.30 + 2 commits).
-# Subprojects must come from the same revision.
+# The vendored MSM port is based on 3.16.30. Use that verified tag's exact
+# subproject pins; the old 6edb42b full hash does not exist upstream.
 #
 # Usage: build-gamescope-in-rootfs.sh <rootfs> [build-dir]
 set -euo pipefail
@@ -15,7 +15,7 @@ WORKDIR="${STEAMOS_WORK:-/work}"
 BUILD="${2:-${WORKDIR}/gamescope-build}"
 SRC="${WORKDIR}/gamescope-src"
 SUBS="${WORKDIR}/gamescope-subprojects"
-UPSTREAM_REF="6edb42bffacb9650c0b3fd63fe2eee3c5f43c75a"
+UPSTREAM_REF="ad2763da1c48860f649abfe842a087188dcb6e20"
 
 log() { printf '==> [gamescope] %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -46,14 +46,15 @@ rm -rf "$SRC"
 mkdir -p "$SRC"
 rsync -a --exclude=subprojects/ "${ROOT}/external-and-mods/gamescope/" "$SRC/"
 rsync -a --delete "$SUBS/" "$SRC/subprojects/"
+cp "$ROOT/external-and-mods/gamescope/catch2.wrap" "$SRC/subprojects/catch2.wrap"
 
 run() {
-  bwrap --bind "$R" / \
-    --bind "$SRC" /src/gamescope \
-    --bind "$(dirname "$BUILD")" /build-parent \
+  bwrap --ro-bind "$R" / \
     --dev /dev --proc /proc --tmpfs /run --tmpfs /tmp \
+    --dir /tmp/src-gamescope --bind "$SRC" /tmp/src-gamescope \
+    --dir /tmp/build-parent --bind "$(dirname "$BUILD")" /tmp/build-parent \
     --ro-bind /etc/resolv.conf /etc/resolv.conf \
-    --unshare-pid --die-with-parent --chdir /src/gamescope \
+    --unshare-pid --die-with-parent --chdir /tmp/src-gamescope \
     --setenv PATH /usr/bin:/usr/local/bin \
     "$@"
 }
@@ -62,12 +63,13 @@ bname="$(basename "$BUILD")"
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
 log "meson setup (Frame rootfs)"
-run meson setup "/build-parent/${bname}" \
+run meson setup "/tmp/build-parent/${bname}" \
   --buildtype=release -Dpipewire=enabled -Denable_openvr_support=false \
-  -Dinput_emulation=enabled -Dbenchmark=disabled -Denable_tests=false \
+  -Dinput_emulation=enabled -Dbenchmark=disabled -Denable_tests=true \
   --force-fallback-for=wlroots,libliftoff,vkroots
 log "ninja"
-run ninja -C "/build-parent/${bname}"
+run ninja -j"${BUILD_JOBS:-4}" -C "/tmp/build-parent/${bname}"
+run meson test -C "/tmp/build-parent/${bname}" --print-errorlogs
 [[ -x "$BUILD/src/gamescope" ]] || die "no gamescope binary"
 if strings "$BUILD/src/gamescope" | grep -q 'GLIBC_2\.4[0-9]'; then
   die "gamescope links against a newer glibc than the Frame"

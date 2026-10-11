@@ -1,0 +1,92 @@
+[
+  {
+    "patch": "0002-input-add-input-polldev-driver.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0005-Bluetooth-btrtl-Add-the-support-for-RTL8733BU.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0033_leds--Add-driver-for-HEROIC-HTR3212.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0054-input-goodix-override-resolution-from-dt.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0055_Synaptics-TD4328-LCD-panel.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0056_Xm-Plus-XM91080G-panel.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0057_Chipone-ICNA35XX-panel.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0057_DDIC-CH13726A-panel.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0058_AYN-Odin2-Mini--backlight.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0059_AYN-Odin2-Mini--hynitron--cstxxx.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0104-drm-panel-Add-Retroid-Pocket-6-panel.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0105-drm-panel-Add-Retroid-Pocket-Nova-panel.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0121-pmdomain-qcom-rpmhpd-presync-floor-gmu-rails.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0501-ROCKNIX-fix-wifi-and-bt-mac.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0504-Enable-64-bit-processes-to-use-compat-input-syscalls.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "1003-rsinput-add-ff.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "v6_20260210_quic_utiwari_crypto_qce_add_runtime_pm_and_interconnect_bandwidth_scaling_support.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  },
+  {
+    "patch": "0005-input-rsinput-reassemble-uart-frames.patch",
+    "identical_nonblank_changes": true,
+    "differences": []
+  }
+]

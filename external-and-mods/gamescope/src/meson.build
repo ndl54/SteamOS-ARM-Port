@@ -181,7 +181,7 @@ compiler_version = cc.version()
 vcs_tag_cmd = ['git', 'describe', '--always', '--tags', '--dirty=+']
 vcs_tag = run_command(vcs_tag_cmd, check: false).stdout().strip()
 if vcs_tag == ''
-  vcs_tag = '3.16.30+2.g6edb42b-sm8650'
+  vcs_tag = '3.16.30-steamos-arm'
 endif
 version_tag = vcs_tag + ' (' + compiler_name + ' ' + compiler_version + ')'
 

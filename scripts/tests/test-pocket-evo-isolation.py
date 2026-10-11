@@ -43,10 +43,21 @@ class Isolation(unittest.TestCase):
         self.assertEqual((name, dtbs, ports), ('pocketevo', 'qcs8550-ayaneo-pocketevo',
                                               'kernel-sm8550 kernel-pocketevo'))
         patches = list((REPO / 'external-and-mods/kernel-pocketevo/patches').glob('*.patch'))
-        self.assertEqual(len(patches), 6)
+        replacements = [p for p in patches if ('0' + p.name[1:]) in skip.split()]
+        self.assertEqual(len(replacements), 6)
         for patch in patches:
             self.assertNotIn(patch.name, skip.split())
+        for patch in replacements:
             self.assertIn('0' + patch.name[1:], skip.split())
+        # New feature patches and exact-context replacements remain EVO-only.
+        for device in ('sm8550', 'sm8650', 'sm8750', 'pocketevo'):
+            check = subprocess.run(['bash', '-c',
+                'source "$1"; printf "%s\n%s" "${PATCH_FUZZ:-2}" "${PATCH_OVERRIDE_DIR:-}"',
+                'recipe', str(REPO / f'external-and-mods/kernel-{device}/soc.env')],
+                capture_output=True, text=True, check=True)
+            fuzz, override = check.stdout.split('\n', 1)
+            self.assertEqual(fuzz, '0' if device == 'pocketevo' else '2')
+            self.assertEqual(bool(override), device == 'pocketevo')
         self.assertNotEqual(self.recipe('pocketevo', 'qcs8550-ayn-odin2').returncode, 0)
         self.assertNotEqual(self.recipe('pocketevo', 'qcs8550-ayaneo-pocketevo qcs8550-ayn-odin2').returncode, 0)
         self.assertEqual(self.recipe('pocketevo', dtbs).returncode, 0)

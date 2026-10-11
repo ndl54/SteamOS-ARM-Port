@@ -57,6 +57,7 @@ const char *g_pOriginalDisplay = nullptr;
 const char *g_pOriginalWaylandDisplay = nullptr;
 
 bool g_bAllowDeferredBackend = false;
+bool g_bExposeClientSampleableFormats = false;
 
 int g_nCursorScaleHeight = -1;
 
@@ -164,6 +165,7 @@ const struct option *gamescope_options = (struct option[]){
 	{ "mura-map", required_argument, nullptr, 0 },
 
 	{ "allow-deferred-backend", no_argument, nullptr, 0 },
+	{ "expose-client-sampleable-formats", no_argument, nullptr, 0 },
 	{ "keep-alive", no_argument, nullptr, 0 },
 
 	{} // keep last
@@ -286,6 +288,8 @@ const char usage[] =
 	"\n"
 	"Platform options:\n"
 	"  --allow-deferred-backend       Allows initting the backend in a deferred way, if it doesn't work immediately. (Note: This has some very minor correctness compromises that you should consider wrt. your platform with modifiers, etc).\n"
+	"  --expose-client-sampleable-formats\n"
+	"                                 Advertise Vulkan-sampleable client DMA-BUF formats even when the output backend cannot scan them out directly.\n"
 	"  --keep-alive                   Keep Gamescope alive even when the primary process has died.\n"
 	"\n"
 	"Keyboard shortcuts:\n"
@@ -860,6 +864,8 @@ int main(int argc, char **argv)
 					g_bLaunchMangoapp = true;
 				} else if (strcmp(opt_name, "allow-deferred-backend") == 0) {
 					g_bAllowDeferredBackend = true;
+				} else if (strcmp(opt_name, "expose-client-sampleable-formats") == 0) {
+					g_bExposeClientSampleableFormats = true;
 				} else if (strcmp(opt_name, "keep-alive") == 0) {
 					cv_shutdown_on_primary_child_death = false;
 				} else if (strcmp(opt_name, "virtual-connector-strategy") == 0) {

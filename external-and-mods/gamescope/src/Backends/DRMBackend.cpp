@@ -34,6 +34,7 @@
 
 #include "backend.h"
 #include "color_helpers.h"
+#include "DRMComposition.h"
 #include "Utils/Defer.h"
 #include "Utils/Parsers.h"
 #include "Utils/String.h"
@@ -75,6 +76,8 @@ gamescope::ConVar<bool> cv_drm_debug_disable_regamma_tf( "drm_debug_disable_rega
 gamescope::ConVar<bool> cv_drm_debug_disable_output_tf( "drm_debug_disable_output_tf", false, "Force default (identity) output TF, affects other logic. Not a property directly." );
 gamescope::ConVar<bool> cv_drm_debug_disable_blend_tf( "drm_debug_disable_blend_tf", false, "Blending chicken bit. (Forces BLEND_TF to DEFAULT, does not affect other logic)" );
 gamescope::ConVar<bool> cv_drm_debug_disable_ctm( "drm_debug_disable_ctm", false, "CTM chicken bit. (Forces CTM off, does not affect other logic)" );
+gamescope::ConVar<bool> cv_drm_plane_luts( "drm_plane_luts", true, "Apply color management through per-plane IGC and 3D LUT colorops on msm, so HDR and mixed-encoding frames scan out directly. Read at startup." );
+gamescope::ConVar<bool> cv_drm_output_luts( "drm_output_luts", true, "Apply SDR color management through the CRTC degamma and 3D LUT when planes lack color management. Off keeps it in the composite shader." );
 gamescope::ConVar<bool> cv_drm_debug_disable_color_encoding( "drm_debug_disable_color_encoding", false, "YUV Color Encoding chicken bit. (Forces COLOR_ENCODING to DEFAULT, does not affect other logic)" );
 gamescope::ConVar<bool> cv_drm_debug_disable_color_range( "drm_debug_disable_color_range", false, "YUV Color Range chicken bit. (Forces COLOR_RANGE to DEFAULT, does not affect other logic)" );
 gamescope::ConVar<bool> cv_drm_debug_disable_explicit_sync( "drm_debug_disable_explicit_sync", false, "Force disable explicit sync on the DRM backend." );
@@ -109,6 +112,7 @@ namespace gamescope
 
 struct drm_t {
 	bool bUseLiftoff;
+	bool bPlaneLuts = false;
 
 	int fd = -1;
 
@@ -140,6 +144,11 @@ struct drm_t {
 	struct drm_state_t {
 		std::shared_ptr<gamescope::BackendBlob> mode_id;
 		uint32_t color_mgmt_serial;
+		// msm output LUTs, rebuilt with color_mgmt_serial
+		std::shared_ptr<gamescope::BackendBlob> output_degamma;
+		std::shared_ptr<gamescope::BackendBlob> output_lut3d;
+		bool output_luts_applied = false;
+		// AMD plane property blobs, or colorop DATA blobs when bPlaneLuts
 		std::shared_ptr<gamescope::BackendBlob> lut3d_id[ EOTF_Count ];
 		std::shared_ptr<gamescope::BackendBlob> shaperlut_id[ EOTF_Count ];
 		amdgpu_transfer_function output_tf = AMDGPU_TRANSFER_FUNCTION_DEFAULT;
@@ -291,6 +300,13 @@ namespace gamescope
 		uint64_t m_ulInitialValue = 0ul;
 	};
 
+	class CDRMColorop final : public CDRMAtomicTypedObject<DRM_MODE_OBJECT_COLOROP>
+	{
+	public:
+		using CDRMAtomicTypedObject::CDRMAtomicTypedObject;
+		using CDRMAtomicTypedObject::GetRawProperties;
+	};
+
 	class CDRMPlane final : public CDRMAtomicTypedObject<DRM_MODE_OBJECT_PLANE>
 	{
 	public:
@@ -334,13 +350,26 @@ namespace gamescope
 			std::optional<CDRMAtomicProperty> AMD_PLANE_LUT3D;
 			std::optional<CDRMAtomicProperty> AMD_PLANE_BLEND_TF;
 			std::optional<CDRMAtomicProperty> AMD_PLANE_BLEND_LUT;
+			std::optional<CDRMAtomicProperty> COLOR_PIPELINE;
+			// Owned by the pipeline's colorops, not the plane
+			std::optional<CDRMAtomicProperty> IGC_DATA;
+			std::optional<CDRMAtomicProperty> IGC_BYPASS;
+			std::optional<CDRMAtomicProperty> LUT3D_DATA;
+			std::optional<CDRMAtomicProperty> LUT3D_BYPASS;
 			std::optional<CDRMAtomicProperty> DUMMY_END;
 		};
 		      PlaneProperties &GetProperties()       { return m_Props; }
 		const PlaneProperties &GetProperties() const { return m_Props; }
+
+		uint64_t GetLutPipeline() const { return m_ulLutPipeline; }
 	private:
+		void FindLutPipeline();
+
 		CAutoDeletePtr<drmModePlane> m_pPlane;
 		PlaneProperties m_Props;
+		std::unique_ptr<CDRMColorop> m_pIgc;
+		std::unique_ptr<CDRMColorop> m_pLut3D;
+		uint64_t m_ulLutPipeline = 0;
 	};
 
 	class CDRMCRTC final : public CDRMAtomicTypedObject<DRM_MODE_OBJECT_CRTC>
@@ -362,6 +391,7 @@ namespace gamescope
 			std::optional<CDRMAtomicProperty> GAMMA_LUT;
 			std::optional<CDRMAtomicProperty> DEGAMMA_LUT;
 			std::optional<CDRMAtomicProperty> CTM;
+			std::optional<CDRMAtomicProperty> DPU_3D_LUT;
 			std::optional<CDRMAtomicProperty> VRR_ENABLED;
 			std::optional<CDRMAtomicProperty> OUT_FENCE_PTR;
 			std::optional<CDRMAtomicProperty> AMD_CRTC_REGAMMA_TF;
@@ -410,6 +440,7 @@ namespace gamescope
 		const displaycolorimetry_t& GetDisplayColorimetry() const { return m_Mutable.DisplayColorimetry; }
 
 		std::span<const uint8_t> GetRawEDID() const override { return std::span<const uint8_t>{ m_Mutable.EdidData.begin(), m_Mutable.EdidData.end() }; }
+		bool HasPhysicalEdid() const { return m_Mutable.bHasPhysicalEdid; }
 		bool HandleEdidChange()
 		{
 			bool bChanged = m_Mutable.bEdidChanged;
@@ -531,7 +562,8 @@ namespace gamescope
 			const char *pszMake = ""; // Not owned, no free. This is a pointer to pnp db or szMakePNP.
 			DRMModeGenerator fnDynamicModeGenerator;
 			std::vector<uint32_t> ValidDynamicRefreshRates{};
-			std::vector<uint8_t> EdidData; // Raw, unmodified.
+			std::vector<uint8_t> EdidData; // Physical or synthetic; never committed to KMS.
+			bool bHasPhysicalEdid = false;
 			std::vector<BackendMode> BackendModes;
 			
 			displaycolorimetry_t DisplayColorimetry = displaycolorimetry_709;
@@ -1047,6 +1079,11 @@ static bool get_resources(struct drm_t *drm)
 				drm->planes.emplace_back( std::make_unique<gamescope::CDRMPlane>( pPlane ) );
 		}
 	}
+
+	drm->bPlaneLuts = std::any_of( drm->planes.begin(), drm->planes.end(),
+		[]( const std::unique_ptr<gamescope::CDRMPlane> &pPlane ) { return pPlane->GetLutPipeline() != 0; } );
+	if ( drm->bPlaneLuts )
+		drm_log.infof( "Using plane IGC + 3D LUT color pipelines" );
 
 	return refresh_state( drm );
 }
@@ -2112,6 +2149,15 @@ bool init_drm(struct drm_t *drm, int width, int height, int refresh)
 		return false;
 	}
 
+	// The cap hides the legacy plane color properties, which amdgpu's path still needs.
+	if ( cv_drm_plane_luts && !g_bForceDisableColorMgmt )
+	{
+		drmVersion *pVersion = drmGetVersion( drm->fd );
+		if ( pVersion && !strcmp( pVersion->name, "msm" ) )
+			drmSetClientCap( drm->fd, DRM_CLIENT_CAP_PLANE_COLOR_PIPELINE, 1 );
+		drmFreeVersion( pVersion );
+	}
+
 	if (drmGetCap(drm->fd, DRM_CAP_CURSOR_WIDTH, &drm->cursor_width) != 0) {
 		drm->cursor_width = 64;
 	}
@@ -2358,6 +2404,9 @@ void finish_drm(struct drm_t *drm)
 		if ( pCRTC->GetProperties().DEGAMMA_LUT )
 			pCRTC->GetProperties().DEGAMMA_LUT->SetPendingValue( req, 0, true );
 
+		if ( pCRTC->GetProperties().DPU_3D_LUT )
+			pCRTC->GetProperties().DPU_3D_LUT->SetPendingValue( req, 0, true );
+
 		if ( pCRTC->GetProperties().CTM )
 			pCRTC->GetProperties().CTM->SetPendingValue( req, 0, true );
 
@@ -2420,6 +2469,9 @@ void finish_drm(struct drm_t *drm)
 
 		if ( pPlane->GetProperties().AMD_PLANE_BLEND_LUT )
 			pPlane->GetProperties().AMD_PLANE_BLEND_LUT->SetPendingValue( req, 0, true );
+
+		if ( pPlane->GetProperties().COLOR_PIPELINE )
+			pPlane->GetProperties().COLOR_PIPELINE->SetPendingValue( req, 0, true );
 	}
 
 	// We can't do a non-blocking commit here or else risk EBUSY in case the
@@ -2668,6 +2720,7 @@ struct LiftoffStateCacheEntry
 		drm_color_range    colorRange;
 		GamescopeAppTextureColorspace colorspace;
 		AlphaBlendingMode_t eAlphaBlendingMode;
+		bool applyColorMgmt;
 	} layerState[ k_nMaxLayers ];
 
 	bool operator == (const LiftoffStateCacheEntry& entry) const
@@ -2796,6 +2849,43 @@ static inline uint32_t ColorSpaceToEOTFIndex( GamescopeAppTextureColorspace colo
 }
 
 
+// liftoff cannot place per-plane colorop properties, so after it picks the planes each
+// one gets the tables of its layer's EOTF and the finished request is tested once more.
+static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
+{
+	for ( std::unique_ptr< gamescope::CDRMPlane > &pPlane : drm->planes )
+	{
+		if ( !pPlane->GetLutPipeline() )
+			continue;
+
+		const FrameInfo_t::Layer_t *pLayer = nullptr;
+		for ( int i = 0; i < frameInfo->layers.count(); i++ )
+		{
+			struct liftoff_plane *pLoPlane = liftoff_layer_get_plane( drm->lo_layers[ i ] );
+			if ( pLoPlane && liftoff_plane_get_id( pLoPlane ) == pPlane->GetObjectId() )
+				pLayer = &frameInfo->layers.get( i );
+		}
+
+		if ( !pLayer || !pLayer->applyColorMgmt )
+			continue;
+
+		// Not a layout failure, so kept out of the liftoff state cache.
+		uint32_t uEOTF = ColorSpaceToEOTFIndex( pLayer->colorspace );
+		if ( !drm->pending.shaperlut_id[ uEOTF ] || !drm->pending.lut3d_id[ uEOTF ] )
+			return -EAGAIN;
+
+		auto &props = pPlane->GetProperties();
+		props.COLOR_PIPELINE->SetPendingValue( drm->req, pPlane->GetLutPipeline(), false );
+		props.IGC_DATA->SetPendingValue( drm->req, drm->pending.shaperlut_id[ uEOTF ]->GetBlobValue(), false );
+		props.IGC_BYPASS->SetPendingValue( drm->req, 0, false );
+		props.LUT3D_DATA->SetPendingValue( drm->req, drm->pending.lut3d_id[ uEOTF ]->GetBlobValue(), false );
+		props.LUT3D_BYPASS->SetPendingValue( drm->req, 0, false );
+	}
+
+	return drmModeAtomicCommit( drm->fd, drm->req,
+		( drm->flags & ~DRM_MODE_PAGE_FLIP_EVENT ) | DRM_MODE_ATOMIC_TEST_ONLY, nullptr );
+}
+
 LiftoffStateCacheEntry FrameInfoToLiftoffStateCacheEntry( struct drm_t *drm, const FrameInfo_t *frameInfo )
 {
 	LiftoffStateCacheEntry entry{};
@@ -2843,6 +2933,7 @@ LiftoffStateCacheEntry FrameInfoToLiftoffStateCacheEntry( struct drm_t *drm, con
 			entry.layerState[i].colorspace = frameInfo->layers.get( i ).colorspace;
 		}
 		entry.layerState[i].eAlphaBlendingMode = frameInfo->layers.get( i ).eAlphaBlendingMode;
+		entry.layerState[i].applyColorMgmt = frameInfo->layers.get( i ).applyColorMgmt;
 	}
 
 	return entry;
@@ -2990,6 +3081,61 @@ namespace gamescope
 			m_Props.AMD_PLANE_LUT3D          = CDRMAtomicProperty::Instantiate( "AMD_PLANE_LUT3D",          this, *rawProperties );
 			m_Props.AMD_PLANE_BLEND_TF       = CDRMAtomicProperty::Instantiate( "AMD_PLANE_BLEND_TF",       this, *rawProperties );
 			m_Props.AMD_PLANE_BLEND_LUT      = CDRMAtomicProperty::Instantiate( "AMD_PLANE_BLEND_LUT",      this, *rawProperties );
+			m_Props.COLOR_PIPELINE           = CDRMAtomicProperty::Instantiate( "COLOR_PIPELINE",           this, *rawProperties );
+			FindLutPipeline();
+		}
+	}
+
+	void CDRMPlane::FindLutPipeline()
+	{
+		m_ulLutPipeline = 0;
+		if ( !m_Props.COLOR_PIPELINE )
+			return;
+
+		drmModePropertyRes *pPipelines = drmModeGetProperty( g_DRM.fd, m_Props.COLOR_PIPELINE->GetPropertyId() );
+		if ( !pPipelines )
+			return;
+		defer( drmModeFreeProperty( pPipelines ) );
+
+		auto IsColorop = []( const DRMObjectRawProperties &props, drm_colorop_type eType, uint64_t ulSize )
+		{
+			auto type = props.find( "TYPE" );
+			auto size = props.find( "SIZE" );
+			return type != props.end() && size != props.end() &&
+				type->second.ulValue == eType && size->second.ulValue == ulSize;
+		};
+
+		for ( int i = 0; i < pPipelines->count_enums; i++ )
+		{
+			uint64_t ulHead = pPipelines->enums[i].value;
+			if ( !ulHead )
+				continue;
+
+			auto pIgc = std::make_unique<CDRMColorop>( ulHead );
+			auto igcProps = pIgc->GetRawProperties();
+			if ( !igcProps || !IsColorop( *igcProps, DRM_COLOROP_1D_LUT, 257 ) || !igcProps->contains( "NEXT" ) )
+				continue;
+
+			auto pLut3D = std::make_unique<CDRMColorop>( igcProps->at( "NEXT" ).ulValue );
+			auto lut3dProps = pLut3D->GetRawProperties();
+			if ( !lut3dProps || !IsColorop( *lut3dProps, DRM_COLOROP_3D_LUT, 17 ) )
+				continue;
+
+			auto igcData     = CDRMAtomicProperty::Instantiate( "DATA",   pIgc.get(),   *igcProps );
+			auto igcBypass   = CDRMAtomicProperty::Instantiate( "BYPASS", pIgc.get(),   *igcProps );
+			auto lut3dData   = CDRMAtomicProperty::Instantiate( "DATA",   pLut3D.get(), *lut3dProps );
+			auto lut3dBypass = CDRMAtomicProperty::Instantiate( "BYPASS", pLut3D.get(), *lut3dProps );
+			if ( !igcData || !igcBypass || !lut3dData || !lut3dBypass )
+				continue;
+
+			m_Props.IGC_DATA = igcData;
+			m_Props.IGC_BYPASS = igcBypass;
+			m_Props.LUT3D_DATA = lut3dData;
+			m_Props.LUT3D_BYPASS = lut3dBypass;
+			m_pIgc = std::move( pIgc );
+			m_pLut3D = std::move( pLut3D );
+			m_ulLutPipeline = ulHead;
+			return;
 		}
 	}
 
@@ -3014,6 +3160,7 @@ namespace gamescope
 			m_Props.GAMMA_LUT           = CDRMAtomicProperty::Instantiate( "GAMMA_LUT",           this, *rawProperties );
 			m_Props.DEGAMMA_LUT         = CDRMAtomicProperty::Instantiate( "DEGAMMA_LUT",         this, *rawProperties );
 			m_Props.CTM                 = CDRMAtomicProperty::Instantiate( "CTM",                 this, *rawProperties );
+			m_Props.DPU_3D_LUT          = CDRMAtomicProperty::Instantiate( "DPU_3D_LUT",          this, *rawProperties );
 			m_Props.VRR_ENABLED         = CDRMAtomicProperty::Instantiate( "VRR_ENABLED",         this, *rawProperties );
 			m_Props.OUT_FENCE_PTR       = CDRMAtomicProperty::Instantiate( "OUT_FENCE_PTR",       this, *rawProperties );
 			m_Props.AMD_CRTC_REGAMMA_TF = CDRMAtomicProperty::Instantiate( "AMD_CRTC_REGAMMA_TF", this, *rawProperties );
@@ -3199,29 +3346,57 @@ namespace gamescope
 					m_Mutable.szName, m_Mutable.ValidDynamicRefreshRates.size() );
 		};
 
-		if ( !GetProperties().EDID )
+		if ( GetProperties().EDID )
+		{
+			const uint64_t ulBlobId = GetProperties().EDID->GetCurrentValue();
+			if ( ulBlobId )
+			{
+				drmModePropertyBlobRes *pBlob = drmModeGetPropertyBlob( g_DRM.fd, ulBlobId );
+				if ( pBlob )
+				{
+					defer( drmModeFreePropertyBlob( pBlob ) );
+					const uint8_t *pDataPointer = reinterpret_cast<const uint8_t *>( pBlob->data );
+					m_Mutable.EdidData = std::vector<uint8_t>{ pDataPointer, pDataPointer + pBlob->length };
+					m_Mutable.bHasPhysicalEdid = true;
+				}
+			}
+		}
+
+		if ( m_Mutable.EdidData.empty() && GetScreenType() == GAMESCOPE_SCREEN_TYPE_INTERNAL )
+		{
+			const drmModeModeInfo *pPreferredMode = find_mode( m_pConnector.get(), 0, 0, 0 );
+			if ( pPreferredMode && !( pPreferredMode->flags & DRM_MODE_FLAG_INTERLACE ) )
+			{
+				m_Mutable.bHasPhysicalEdid = false;
+				m_Mutable.EdidData = GenerateSimpleEdid( EdidModeInfo
+				{
+					.clockKHz = static_cast<uint32_t>( pPreferredMode->clock ),
+					.hdisplay = pPreferredMode->hdisplay,
+					.hsyncStart = pPreferredMode->hsync_start,
+					.hsyncEnd = pPreferredMode->hsync_end,
+					.htotal = pPreferredMode->htotal,
+					.vdisplay = pPreferredMode->vdisplay,
+					.vsyncStart = pPreferredMode->vsync_start,
+					.vsyncEnd = pPreferredMode->vsync_end,
+					.vtotal = pPreferredMode->vtotal,
+					.physicalWidthMm = m_pConnector->mmWidth > 0 ? static_cast<uint32_t>( m_pConnector->mmWidth ) : 0,
+					.physicalHeightMm = m_pConnector->mmHeight > 0 ? static_cast<uint32_t>( m_pConnector->mmHeight ) : 0,
+					.hsyncPositive = !!( pPreferredMode->flags & DRM_MODE_FLAG_PHSYNC ),
+					.vsyncPositive = !!( pPreferredMode->flags & DRM_MODE_FLAG_PVSYNC ),
+				} );
+				if ( !m_Mutable.EdidData.empty() )
+				{
+					drm_log.infof( "Generated synthetic EDID for EDID-less internal connector %s from mode %s",
+						m_Mutable.szName, pPreferredMode->name );
+				}
+			}
+		}
+
+		if ( m_Mutable.EdidData.empty() )
 		{
 			collectModeRefreshRates();
 			return;
 		}
-
-		uint64_t ulBlobId = GetProperties().EDID->GetCurrentValue();
-		if ( !ulBlobId )
-		{
-			collectModeRefreshRates();
-			return;
-		}
-
-		drmModePropertyBlobRes *pBlob = drmModeGetPropertyBlob( g_DRM.fd, ulBlobId );
-		if ( !pBlob )
-		{
-			collectModeRefreshRates();
-			return;
-		}
-		defer( drmModeFreePropertyBlob( pBlob ) );
-
-		const uint8_t *pDataPointer = reinterpret_cast<const uint8_t *>( pBlob->data );
-		m_Mutable.EdidData = std::vector<uint8_t>{ pDataPointer, pDataPointer + pBlob->length };
 
 		di_info *pInfo = di_info_parse_edid( m_Mutable.EdidData.data(), m_Mutable.EdidData.size() );
 		if ( !pInfo )
@@ -3275,7 +3450,19 @@ namespace gamescope
 		{
 			CScriptScopedLock script;
 
-			auto oKnownDisplay = script.Manager().Gamescope().Config.LookupDisplay( script, m_Mutable.szMakePNP, pProduct->product, m_Mutable.szModel, m_Mutable.szDataString );
+			const bool bInternal = GetScreenType() == GAMESCOPE_SCREEN_TYPE_INTERNAL;
+			const char *pszDeviceId = bInternal ? getenv( "GAMESCOPE_INTERNAL_DEVICE_ID" ) : nullptr;
+			auto oKnownDisplay = script.Manager().Gamescope().Config.LookupDisplay( script, GamescopeDisplayLookupInfo
+			{
+				.vendor = m_Mutable.szMakePNP,
+				.product = pProduct->product,
+				.model = m_Mutable.szModel,
+				.dataString = m_Mutable.szDataString,
+				.connector = m_Mutable.szName,
+				.deviceId = pszDeviceId ? pszDeviceId : "",
+				.internal = bInternal,
+				.hasEdid = m_Mutable.bHasPhysicalEdid,
+			} );
 			if ( oKnownDisplay )
 			{
 				sol::table tTable = oKnownDisplay->second;
@@ -3374,9 +3561,11 @@ namespace gamescope
 					bHasKnownHDRInfo = true;
 				}
 			}
-			else
+			if ( m_Mutable.ValidDynamicRefreshRates.empty() )
 			{
-				// Unknown display, see if there are any other refresh rates in the EDID we can get.
+				// No display-specific rates (unknown display, or a known profile
+				// without a dynamic modegen); collect the connector's own
+				// refresh rates so the kernel mode list stays usable.
 				if ( GetScreenType() == GAMESCOPE_SCREEN_TYPE_INTERNAL || cv_drm_allow_dynamic_modes_for_external_display )
 				{
 					const drmModeModeInfo *pPreferredMode = find_mode( m_pConnector.get(), 0, 0, 0 );
@@ -3739,6 +3928,14 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
 		}
 	}
 
+	// liftoff's allocation tests must not inherit last frame's pipelines; a pipeline
+	// set again below wins, as the last value of a property in a request does.
+	for ( std::unique_ptr< gamescope::CDRMPlane > &pPlane : drm->planes )
+	{
+		if ( pPlane->GetLutPipeline() )
+			pPlane->GetProperties().COLOR_PIPELINE->SetPendingValue( drm->req, 0, false );
+	}
+
 	struct liftoff_output_apply_options lo_options = {
 		.timeout_ns = std::numeric_limits<int64_t>::max()
 	};
@@ -3776,6 +3973,9 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
 		if ( liftoff_output_needs_composition( drm->lo_output ) )
 			ret = -EINVAL;
 	}
+
+	if ( ret == 0 && drm->bPlaneLuts )
+		ret = drm_set_plane_luts( drm, frameInfo );
 
 	// If we aren't modesetting and we got -EINVAL, that means that we
 	// probably can't do this layout, so add it to our state cache so we don't
@@ -3922,6 +4122,29 @@ int drm_prepare( struct drm_t *drm, bool async, const struct FrameInfo_t *frameI
 			drm->needs_modeset = true;
 	}
 
+	// A sleeping screen holds no output LUTs, so its desired state is "not applied";
+	// otherwise every repaint while asleep would see a mismatch and ask for a modeset.
+	const bool bSleep = drm->pConnector && cv_drm_sleep_screens[ drm->pConnector->GetScreenType() ];
+
+	// The output LUTs change on this request when they go on or off (which changes
+	// the display blocks the CRTC owns and needs a modeset) or when their contents do;
+	// neither can ride on an async flip.
+	bool bOutputLutChange = false;
+	if ( drm->pCRTC && drm->pCRTC->GetProperties().DPU_3D_LUT && !drm_supports_color_mgmt( drm ) )
+	{
+		bool bApply = !bSleep && frameInfo->outputLuts && drm->pending.output_degamma && drm->pending.output_lut3d;
+		if ( bApply != drm->current.output_luts_applied )
+		{
+			drm->needs_modeset = true;
+			bOutputLutChange = true;
+		}
+		else if ( bApply && ( drm->pending.output_degamma != drm->current.output_degamma ||
+			drm->pending.output_lut3d != drm->current.output_lut3d ) )
+		{
+			bOutputLutChange = true;
+		}
+	}
+
 	drm->m_FbIdsInRequest.clear();
 
 	bool needs_modeset = drm->needs_modeset.exchange(false);
@@ -3953,15 +4176,14 @@ int drm_prepare( struct drm_t *drm, bool async, const struct FrameInfo_t *frameI
 
 	// We do internal refcounting with these events
 
-	bool bSleep = false;
 	if ( drm->pConnector )
 	{
-		bSleep = cv_drm_sleep_screens[ drm->pConnector->GetScreenType() ];
-
 		bool bCurrentlyAsleep = drm->pConnector->GetProperties().CRTC_ID->GetCurrentValue() == 0;
 
 		if ( bCurrentlyAsleep != bSleep )
 			needs_modeset = true;
+		if ( bSleep )
+			drm->pending.output_luts_applied = false;
 	}
 
 	if ( !bSleep )
@@ -3969,7 +4191,7 @@ int drm_prepare( struct drm_t *drm, bool async, const struct FrameInfo_t *frameI
 		if ( drm->pCRTC != nullptr )
 			flags |= DRM_MODE_PAGE_FLIP_EVENT;
 
-		if ( async || g_bForceAsyncFlips )
+		if ( ( async || g_bForceAsyncFlips ) && !bOutputLutChange )
 			flags |= DRM_MODE_PAGE_FLIP_ASYNC;
 	}
 
@@ -4020,6 +4242,9 @@ int drm_prepare( struct drm_t *drm, bool async, const struct FrameInfo_t *frameI
 			if ( pCRTC->GetProperties().DEGAMMA_LUT )
 				pCRTC->GetProperties().DEGAMMA_LUT->SetPendingValue( drm->req, 0, bForceInRequest );
 
+			if ( pCRTC->GetProperties().DPU_3D_LUT )
+				pCRTC->GetProperties().DPU_3D_LUT->SetPendingValue( drm->req, 0, bForceInRequest );
+
 			if ( pCRTC->GetProperties().CTM )
 				pCRTC->GetProperties().CTM->SetPendingValue( drm->req, 0, bForceInRequest );
 
@@ -4053,7 +4278,7 @@ int drm_prepare( struct drm_t *drm, bool async, const struct FrameInfo_t *frameI
 			if ( drm->pCRTC->GetProperties().GAMMA_LUT )
 				drm->pCRTC->GetProperties().GAMMA_LUT->SetPendingValue( drm->req, 0, true );
 
-			if ( drm->pCRTC->GetProperties().DEGAMMA_LUT )
+			if ( drm->pCRTC->GetProperties().DEGAMMA_LUT && !drm->pCRTC->GetProperties().DPU_3D_LUT )
 				drm->pCRTC->GetProperties().DEGAMMA_LUT->SetPendingValue( drm->req, 0, true );
 
 			if ( drm->pCRTC->GetProperties().CTM )
@@ -4082,6 +4307,14 @@ int drm_prepare( struct drm_t *drm, bool async, const struct FrameInfo_t *frameI
 
 	if ( drm->pCRTC && !bSleep )
 	{
+		if ( drm->pCRTC->GetProperties().DEGAMMA_LUT && drm->pCRTC->GetProperties().DPU_3D_LUT && !drm_supports_color_mgmt( drm ) )
+		{
+			bool bApply = frameInfo->outputLuts && drm->pending.output_degamma && drm->pending.output_lut3d;
+			drm->pending.output_luts_applied = bApply;
+			drm->pCRTC->GetProperties().DEGAMMA_LUT->SetPendingValue( drm->req, bApply ? drm->pending.output_degamma->GetBlobValue() : 0lu, bForceInRequest );
+			drm->pCRTC->GetProperties().DPU_3D_LUT->SetPendingValue( drm->req, bApply ? drm->pending.output_lut3d->GetBlobValue() : 0lu, bForceInRequest );
+		}
+
 		if ( drm->pCRTC->GetProperties().AMD_CRTC_REGAMMA_TF )
 		{
 			if ( !cv_drm_debug_disable_regamma_tf )
@@ -4219,13 +4452,112 @@ gamescope::GamescopeScreenType drm_get_screen_type(struct drm_t *drm)
 	return drm->pConnector->GetScreenType();
 }
 
+// The DPU's post-blend DEGAMMA_LUT (256) and DPU_3D_LUT (17^3) take the
+// gamma 2.2 shaper and 3D LUT the shader would apply; the shaper is
+// interpolated down from its 4096 entries.
+static bool drm_update_output_luts(struct drm_t *drm)
+{
+	static constexpr uint32_t k_nDegammaSize = 256;
+	const gamescope_color_mgmt_luts &luts = g_ColorMgmtLuts[EOTF_Gamma22];
+	std::array<uint16_t, k_nDegammaSize * 4> degamma;
+
+	if ( !luts.HasLuts() )
+	{
+		drm->pending.output_degamma = nullptr;
+		drm->pending.output_lut3d = nullptr;
+		return true;
+	}
+
+	for ( uint32_t i = 0; i < k_nDegammaSize; i++ )
+	{
+		// entry i of both tables sits at i / (size - 1)
+		uint32_t pos = i * ( s_nLutSize1d - 1 );
+		uint32_t src = pos / ( k_nDegammaSize - 1 );
+		uint32_t frac = pos % ( k_nDegammaSize - 1 );
+		uint32_t next = std::min( src + 1, s_nLutSize1d - 1 );
+		for ( uint32_t c = 0; c < 3; c++ )
+		{
+			uint32_t a = luts.lut1d[src * 4 + c];
+			uint32_t b = luts.lut1d[next * 4 + c];
+			degamma[i * 4 + c] = ( a * ( k_nDegammaSize - 1 - frac ) + b * frac + ( k_nDegammaSize - 1 ) / 2 ) / ( k_nDegammaSize - 1 );
+		}
+		degamma[i * 4 + 3] = 0;
+	}
+
+	std::shared_ptr<gamescope::BackendBlob> pDegamma = GetBackend()->CreateBackendBlob( degamma );
+	std::shared_ptr<gamescope::BackendBlob> pLut3D = GetBackend()->CreateBackendBlob( luts.lut3d );
+	if ( !pDegamma || !pLut3D )
+		return false;
+
+	drm->pending.output_degamma = std::move( pDegamma );
+	drm->pending.output_lut3d = std::move( pLut3D );
+	return true;
+}
+
+// The colorop tables: IGC entry i sits at i / (size - 1) like the shaper's, and
+// the 3D LUT is red fastest like the shader's, so both are plain conversions.
+static bool drm_update_plane_luts(struct drm_t *drm)
+{
+	static constexpr uint32_t k_nIgcSize = 257;
+	static constexpr uint32_t k_nLut3DSize = s_nLutEdgeSize3d * s_nLutEdgeSize3d * s_nLutEdgeSize3d;
+	auto ToLut32 = []( uint16_t val ) { return uint32_t( val ) * 0x10001u; };
+
+	for ( uint32_t e = 0; e < EOTF_Count; e++ )
+	{
+		const gamescope_color_mgmt_luts &luts = g_ColorMgmtLuts[e];
+		drm->pending.shaperlut_id[e] = nullptr;
+		drm->pending.lut3d_id[e] = nullptr;
+		if ( !luts.HasLuts() )
+			continue;
+
+		std::array<drm_color_lut32, k_nIgcSize> igc{};
+		for ( uint32_t i = 0; i < k_nIgcSize; i++ )
+		{
+			uint32_t pos = i * ( s_nLutSize1d - 1 );
+			uint32_t src = pos / ( k_nIgcSize - 1 );
+			uint32_t frac = pos % ( k_nIgcSize - 1 );
+			uint32_t next = std::min( src + 1, s_nLutSize1d - 1 );
+			uint32_t *pOut[3] = { &igc[i].red, &igc[i].green, &igc[i].blue };
+			for ( uint32_t c = 0; c < 3; c++ )
+			{
+				uint64_t a = ToLut32( luts.lut1d[src * 4 + c] );
+				uint64_t b = ToLut32( luts.lut1d[next * 4 + c] );
+				*pOut[c] = ( a * ( k_nIgcSize - 1 - frac ) + b * frac + ( k_nIgcSize - 1 ) / 2 ) / ( k_nIgcSize - 1 );
+			}
+		}
+
+		auto pLut3D = std::make_unique<std::array<drm_color_lut32, k_nLut3DSize>>();
+		for ( uint32_t n = 0; n < k_nLut3DSize; n++ )
+			( *pLut3D )[n] = { ToLut32( luts.lut3d[n * 4] ), ToLut32( luts.lut3d[n * 4 + 1] ), ToLut32( luts.lut3d[n * 4 + 2] ), 0 };
+
+		drm->pending.shaperlut_id[e] = GetBackend()->CreateBackendBlob( igc );
+		drm->pending.lut3d_id[e] = GetBackend()->CreateBackendBlob( *pLut3D );
+		if ( !drm->pending.shaperlut_id[e] || !drm->pending.lut3d_id[e] )
+			return false;
+	}
+	return true;
+}
+
 bool drm_update_color_mgmt(struct drm_t *drm)
 {
-	if ( !drm_supports_color_mgmt( drm ) )
-		return true;
-
 	if ( g_ColorMgmt.serial == drm->current.color_mgmt_serial )
 		return true;
+
+	if ( drm->bPlaneLuts )
+	{
+		// A failed blob keeps the old serial so the next frame retries.
+		if ( drm_update_plane_luts( drm ) )
+			drm->pending.color_mgmt_serial = g_ColorMgmt.serial;
+		return true;
+	}
+
+	if ( !drm_supports_color_mgmt( drm ) )
+	{
+		// A failed blob keeps the old serial so the next frame retries.
+		if ( GetBackend()->SupportsOutputLUTs() && drm_update_output_luts( drm ) )
+			drm->pending.color_mgmt_serial = g_ColorMgmt.serial;
+		return true;
+	}
 
 	drm->pending.color_mgmt_serial = g_ColorMgmt.serial;
 
@@ -4392,6 +4724,15 @@ bool drm_set_refresh( struct drm_t *drm, int refresh )
 
 	drmModeConnector *connector = drm->pConnector->GetModeConnector();
 	const drmModeModeInfo *existing_mode = find_mode(connector, width, height, refresh);
+	// EVO modes include vendor command sequences; a synthesized VFP/clock is not a mode.
+	const char *deviceId = getenv( "GAMESCOPE_INTERNAL_DEVICE_ID" );
+	if ( !existing_mode && drm->pConnector->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_INTERNAL &&
+	     deviceId && !strcmp( deviceId, "ayaneo-pocket-evo" ) )
+	{
+		drm_log.errorf( "Pocket EVO: refusing unlisted refresh %d Hz", refresh );
+		return false;
+	}
+
 	drmModeModeInfo mode = {0};
 	if ( existing_mode )
 	{
@@ -4624,24 +4965,52 @@ namespace gamescope
 			bNeedsFullComposite |= !g_reshade_effect.empty();
 			bNeedsFullComposite |= steamcompmgr_has_night_rgb_ctm();
 
+			const bool bSupportsHardwareColorManagement = SupportsColorManagement() || g_DRM.bPlaneLuts;
+			if ( g_DRM.bPlaneLuts )
+			{
+				// Keep transforms unsupported by the VIG pipeline in Vulkan.
+				for ( int i = 0; i < pFrameInfo->layers.count(); i++ )
+				{
+					const FrameInfo_t::Layer_t &layer = pFrameInfo->layers.get( i );
+					if ( layer.applyColorMgmt )
+						bNeedsFullComposite |= layer.ctm || layer.isYcbcr() ||
+							( layer.colorspace != GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR &&
+							  layer.colorspace != GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB &&
+							  layer.colorspace != GAMESCOPE_APP_TEXTURE_COLORSPACE_HDR10_PQ );
+				}
+			}
+
 			if ( g_bOutputHDREnabled )
 			{
 				bNeedsFullComposite |= g_bHDRItmEnable;
-				if ( !SupportsColorManagement() )
+				bNeedsFullComposite |= DrmHdrOutputRequiresVulkanComposition(
+					g_bOutputHDREnabled,
+					bSupportsHardwareColorManagement,
+					pFrameInfo->outputEncodingEOTF,
+					pFrameInfo->layers.count(),
+					pFrameInfo->layers.get( 0 ).colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_HDR10_PQ,
+					pFrameInfo->outputLuts );
+				if ( !bSupportsHardwareColorManagement )
 				{
-					bNeedsFullComposite |= ( pFrameInfo->layers.count() > 1 || pFrameInfo->layers.get( 0 ).colorspace != GAMESCOPE_APP_TEXTURE_COLORSPACE_HDR10_PQ );
 					// Scanout can't apply the LUT-baked backlight dim here.
 					bNeedsFullComposite |= g_ColorMgmt.current.flBacklightLutGain != 1.0f;
 				}
 			}
 			else
 			{
-				if ( !SupportsColorManagement() )
+				if ( !bSupportsHardwareColorManagement )
 					bNeedsFullComposite |= ColorspaceIsHDR( pFrameInfo->layers.get( 0 ).colorspace );
 			}
 
 			bNeedsFullComposite |= !!(g_uCompositeDebug & CompositeDebugFlag::Heatmap);
 			bNeedsFullComposite |= g_uOutputRotation != 0; // can't rotate planes at scanout
+			// SDR color work that neither a plane nor the CRTC carries has to go through the shader.
+			if ( !bSupportsHardwareColorManagement && !pFrameInfo->outputLuts &&
+			     pFrameInfo->shaperLut[EOTF_Gamma22] )
+			{
+				for ( uint32_t i = 0; i < pFrameInfo->layers.count(); i++ )
+					bNeedsFullComposite |= !ColorspaceIsHDR( pFrameInfo->layers.get( i ).colorspace );
+			}
 
 			bool bDoComposite = true;
 			if ( !bNeedsFullComposite && !bWantsPartialComposite )
@@ -4755,6 +5124,8 @@ namespace gamescope
 			FrameInfo_t presentCompFrameInfo = {};
 			presentCompFrameInfo.allowVRR = pFrameInfo->allowVRR;
 			presentCompFrameInfo.outputEncodingEOTF = pFrameInfo->outputEncodingEOTF;
+			// The composited frame keeps the output LUTs; turning them off would be a modeset.
+			presentCompFrameInfo.outputLuts = pFrameInfo->outputLuts;
 
 			if ( bNeedsFullComposite )
 			{
@@ -5055,6 +5426,22 @@ namespace gamescope
 		bool SupportsColorManagement() const
 		{
 			return drm_supports_color_mgmt( &g_DRM );
+		}
+
+		// A pair built for the previous color state is still applied for the one
+		// frame before the backend rebuilds it, as the AMD plane LUTs are.
+		virtual bool OutputLUTsReady() const override
+		{
+			return g_DRM.pending.output_degamma && g_DRM.pending.output_lut3d;
+		}
+
+		virtual bool SupportsOutputLUTs() const override
+		{
+			// The kernel exposes DPU_3D_LUT only where the DSPP LUT blocks are driven.
+			return cv_drm_output_luts && !g_bForceDisableColorMgmt && !drm_supports_color_mgmt( &g_DRM ) &&
+				!g_DRM.bPlaneLuts &&
+				g_DRM.pCRTC && g_DRM.pCRTC->GetProperties().DEGAMMA_LUT.has_value() &&
+				g_DRM.pCRTC->GetProperties().DPU_3D_LUT.has_value();
 		}
 
 		int Commit( const FrameInfo_t *pFrameInfo )

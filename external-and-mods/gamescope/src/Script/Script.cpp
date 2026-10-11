@@ -243,16 +243,20 @@ namespace gamescope
     // GamescopeScript_t
     //
 
-    std::optional<std::pair<std::string_view, sol::table>> GamescopeScript_t::Config_t::LookupDisplay( CScriptScopedLock &script, std::string_view psvVendor,  uint16_t uProduct, std::string_view psvModel, std::string_view psvDataString )
+    std::optional<std::pair<std::string_view, sol::table>> GamescopeScript_t::Config_t::LookupDisplay( CScriptScopedLock &script, const GamescopeDisplayLookupInfo &display )
     {
         int nMaxPrority = -1;
         std::optional<std::pair<std::string_view, sol::table>> oOutDisplay;
 
         sol::table tDisplay = script->create_table();
-        tDisplay["vendor"] = psvVendor;
-        tDisplay["product"] = uProduct;
-        tDisplay["model"] = psvModel;
-        tDisplay["data_string"] = psvDataString;
+        tDisplay["vendor"] = display.vendor;
+        tDisplay["product"] = display.product;
+        tDisplay["model"] = display.model;
+        tDisplay["data_string"] = display.dataString;
+        tDisplay["connector"] = display.connector;
+        tDisplay["device_id"] = display.deviceId;
+        tDisplay["internal"] = display.internal;
+        tDisplay["has_edid"] = display.hasEdid;
 
         for ( auto iter : KnownDisplays )
         {

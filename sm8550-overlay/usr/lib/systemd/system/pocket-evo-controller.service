@@ -1,0 +1,12 @@
+[Unit]
+Description=Recover Pocket EVO MCU gamepad mode
+After=systemd-udev-settle.service
+Before=inputplumber.service pocket-evo-led.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/pocketevo/pocket-evo-controller
+TimeoutStartSec=5
+
+[Install]
+WantedBy=multi-user.target

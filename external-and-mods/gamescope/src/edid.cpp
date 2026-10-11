@@ -4,8 +4,10 @@
 #include "log.hpp"
 #include "hdmi.h"
 
+#include <algorithm>
 #include <cassert>
 #include <climits>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 
@@ -223,6 +225,9 @@ namespace gamescope
                     uint8_t *dtd = &ext_data[dtd_start];
                     memmove(dtd + hdr_metadata_block_size_plus_headers, dtd, hdr_metadata_block_size_plus_headers);
                     dtd_start += hdr_metadata_block_size_plus_headers;
+                    // The descriptor offset must follow the inserted block or
+                    // parsers read the data block as a detailed timing.
+                    ext_data[2] = dtd_start;
 
                     // Data block is where the dtd was.
                     uint8_t *data_block = dtd;
@@ -405,5 +410,110 @@ namespace gamescope
             return nullptr;
 
         return szPath;
+    }
+
+    std::vector<uint8_t> GenerateSimpleEdid( const EdidModeInfo &mode )
+    {
+        if ( !mode.clockKHz || mode.clockKHz > 655350 ||
+             !mode.hdisplay || mode.hdisplay > 4095 ||
+             mode.hsyncStart < mode.hdisplay || mode.hsyncEnd < mode.hsyncStart || mode.htotal < mode.hsyncEnd ||
+             !mode.vdisplay || mode.vdisplay > 4095 ||
+             mode.vsyncStart < mode.vdisplay || mode.vsyncEnd < mode.vsyncStart || mode.vtotal < mode.vsyncEnd )
+        {
+            return {};
+        }
+
+        // Physical size is optional info; report unknown rather than failing
+        // when the connector reports nothing or something unencodable.
+        uint32_t widthMm = mode.physicalWidthMm;
+        uint32_t heightMm = mode.physicalHeightMm;
+        if ( !widthMm || widthMm > 4095 || !heightMm || heightMm > 4095 )
+            widthMm = heightMm = 0;
+
+        const uint32_t hblank = mode.htotal - mode.hdisplay;
+        const uint32_t vblank = mode.vtotal - mode.vdisplay;
+        if ( !hblank || hblank > 4095 || !vblank || vblank > 4095 )
+            return {};
+
+        // These fields only describe timing to EDID readers; the mode comes from the
+        // kernel. A large front porch (ICNA3512: 412 lines) overflows the DTD, so clamp.
+        const uint32_t hsyncOffset = std::min<uint32_t>( mode.hsyncStart - mode.hdisplay, 1023 );
+        const uint32_t hsyncWidth = std::clamp<uint32_t>( mode.hsyncEnd - mode.hsyncStart, 1, 1023 );
+        const uint32_t vsyncOffset = std::min<uint32_t>( mode.vsyncStart - mode.vdisplay, 63 );
+        const uint32_t vsyncWidth = std::clamp<uint32_t>( mode.vsyncEnd - mode.vsyncStart, 1, 63 );
+
+        const uint32_t pixelClock10KHz = ( mode.clockKHz + 5 ) / 10;
+        if ( !pixelClock10KHz || pixelClock10KHz > UINT16_MAX )
+            return {};
+
+        std::vector<uint8_t> edid = GenerateSimpleEdid( mode.hdisplay, mode.vdisplay );
+        uint8_t *dtd = &edid[0x36];
+        std::fill( dtd, dtd + EDID_BYTE_DESCRIPTOR_SIZE, 0 );
+
+        dtd[0] = pixelClock10KHz & 0xff;
+        dtd[1] = ( pixelClock10KHz >> 8 ) & 0xff;
+        dtd[2] = mode.hdisplay & 0xff;
+        dtd[3] = hblank & 0xff;
+        dtd[4] = ( ( mode.hdisplay >> 8 ) << 4 ) | ( hblank >> 8 );
+        dtd[5] = mode.vdisplay & 0xff;
+        dtd[6] = vblank & 0xff;
+        dtd[7] = ( ( mode.vdisplay >> 8 ) << 4 ) | ( vblank >> 8 );
+        dtd[8] = hsyncOffset & 0xff;
+        dtd[9] = hsyncWidth & 0xff;
+        dtd[10] = ( ( vsyncOffset & 0xf ) << 4 ) | ( vsyncWidth & 0xf );
+        dtd[11] = ( ( hsyncOffset >> 8 ) << 6 ) |
+                  ( ( hsyncWidth >> 8 ) << 4 ) |
+                  ( ( vsyncOffset >> 4 ) << 2 ) |
+                    ( vsyncWidth >> 4 );
+        dtd[12] = widthMm & 0xff;
+        dtd[13] = heightMm & 0xff;
+        dtd[14] = ( ( widthMm >> 8 ) << 4 ) | ( heightMm >> 8 );
+        dtd[17] = 0x18 |
+                  ( mode.vsyncPositive ? 0x04 : 0 ) |
+                  ( mode.hsyncPositive ? 0x02 : 0 );
+
+        edid[0x15] = std::min<uint32_t>( 255, ( widthMm + 5 ) / 10 );
+        edid[0x16] = std::min<uint32_t>( 255, ( heightMm + 5 ) / 10 );
+
+        // The template blob carries Deck-OLED-like wide-gamut chromaticity,
+        // which downstream colorimetry would trust. A generic panel should
+        // advertise plain sRGB instead.
+        const auto to10Bit = []( float coord ) -> uint32_t
+        {
+            return std::min<uint32_t>( 1023, static_cast<uint32_t>( lroundf( coord * 1024.0f ) ) );
+        };
+        const uint32_t rx = to10Bit( 0.640f ), ry = to10Bit( 0.330f );
+        const uint32_t gx = to10Bit( 0.300f ), gy = to10Bit( 0.600f );
+        const uint32_t bx = to10Bit( 0.150f ), by = to10Bit( 0.060f );
+        const uint32_t wx = to10Bit( 0.3127f ), wy = to10Bit( 0.3290f );
+        edid[0x19] = ( ( rx & 3 ) << 6 ) | ( ( ry & 3 ) << 4 ) | ( ( gx & 3 ) << 2 ) | ( gy & 3 );
+        edid[0x1a] = ( ( bx & 3 ) << 6 ) | ( ( by & 3 ) << 4 ) | ( ( wx & 3 ) << 2 ) | ( wy & 3 );
+        edid[0x1b] = rx >> 2;
+        edid[0x1c] = ry >> 2;
+        edid[0x1d] = gx >> 2;
+        edid[0x1e] = gy >> 2;
+        edid[0x1f] = bx >> 2;
+        edid[0x20] = by >> 2;
+        edid[0x21] = wx >> 2;
+        edid[0x22] = wy >> 2;
+
+        // The template's 45-90Hz range limits contradict the real mode; blanking it
+        // also requires clearing the continuous-frequency bit, which mandates one.
+        edid[0x18] &= ~0x01;
+        uint8_t *dummyDescriptor = &edid[0x5a];
+        std::fill( dummyDescriptor, dummyDescriptor + EDID_BYTE_DESCRIPTOR_SIZE, 0 );
+        dummyDescriptor[3] = 0x10;
+
+        // Keep a valid, empty CTA extension so display policy can add metadata
+        // without replacing this baseline EDID.
+        uint8_t *cta = &edid[EDID_BLOCK_SIZE];
+        std::fill( cta, cta + EDID_BLOCK_SIZE, 0 );
+        cta[0] = DI_EDID_EXT_CEA;
+        cta[1] = 3;
+        cta[2] = 4;
+        patch_edid_checksum( cta );
+
+        patch_edid_checksum( &edid[0] );
+        return edid;
     }
 }

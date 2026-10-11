@@ -830,8 +830,8 @@ void calcColorTransform( lut1d_t * pShaper, int nLutSize1d,
 
 bool BIsWideGamut( const displaycolorimetry_t & nativeDisplayOutput )
 {
-    // Use red as a sentinal for a wide-gamut display
-    return ( nativeDisplayOutput.primaries.r.x > 0.650f && nativeDisplayOutput.primaries.r.y < 0.320f );
+    // Use red as a sentinal for a wide-gamut display; DCI-P3 red sits exactly on the threshold
+    return ( nativeDisplayOutput.primaries.r.x > 0.650f && nativeDisplayOutput.primaries.r.y <= 0.320f );
 }
 
 void buildSDRColorimetry( displaycolorimetry_t * pColorimetry, colormapping_t *pMapping,

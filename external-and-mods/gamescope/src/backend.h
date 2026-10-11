@@ -342,6 +342,11 @@ namespace gamescope
         virtual OwningRc<IBackendFb> ImportDmabufToBackend( wlr_dmabuf_attributes *pDmaBuf ) = 0;
 
         virtual bool UsesModifiers() const = 0;
+        // Post-blend degamma + 3D LUT on the output (msm DPU): carries the SDR shaper + 3D LUT
+        // after blending, resampled to the hardware's table sizes.
+        virtual bool SupportsOutputLUTs() const { return false; }
+        // An output LUT pair exists; it may be one frame behind the color management state.
+        virtual bool OutputLUTsReady() const { return false; }
         virtual std::span<const uint64_t> GetSupportedModifiers( uint32_t uDrmFormat ) const = 0;
 		inline bool SupportsFormat( uint32_t uDrmFormat ) const
 		{

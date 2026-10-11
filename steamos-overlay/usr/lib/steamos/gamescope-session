@@ -95,6 +95,14 @@ export _STEAM_SETENV_MANAGER=1
 export SteamDeck=1
 export STEAM_MULTIPLE_XWAYLANDS=1
 export STEAM_GAMESCOPE_HDR_SUPPORTED=0
+# The new profile needs the rebuilt Gamescope EDID/color pipeline support.
+# Keep old binaries usable during a kernel-only update.
+if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo'; then
+  export GAMESCOPE_INTERNAL_DEVICE_ID=ayaneo-pocket-evo
+  if gamescope --help 2>&1 | grep -- '--expose-client-sampleable-formats' >/dev/null; then
+    export STEAM_GAMESCOPE_HDR_SUPPORTED=1
+  fi
+fi
 export STEAM_ENABLE_VOLUME_HANDLER="${STEAM_ENABLE_VOLUME_HANDLER:-0}"
 export SRT_URLOPEN_PREFER_STEAM=1
 export ENABLE_GAMESCOPE_WSI=1
@@ -325,6 +333,9 @@ if [[ "$KMS_ROTATION" != 1 ]]; then
   else
     GAMESCOPE_ARGS+=(--use-rotation-shader --force-composition)
   fi
+fi
+if [[ "$STEAM_GAMESCOPE_HDR_SUPPORTED" == 1 ]]; then
+  GAMESCOPE_ARGS+=(--hdr-enabled)
 fi
 if [[ -n "$PANEL_ORIENT" ]]; then
   GAMESCOPE_ARGS+=(--force-orientation "$PANEL_ORIENT")

@@ -2,7 +2,9 @@
 
 #include "../Utils/Dict.h"
 
+#include <cstdint>
 #include <mutex>
+#include <string_view>
 
 #if HAVE_SCRIPTING
 
@@ -11,6 +13,22 @@
 namespace gamescope
 {
     class CScriptScopedLock;
+
+    // Identity offered to known-display matches(). vendor/product/model/
+    // dataString come from the parsed EDID (physical or synthetic); connector,
+    // deviceId, internal, and hasEdid let profiles match EDID-less internal
+    // panels whose synthetic EDID carries no useful identity of its own.
+    struct GamescopeDisplayLookupInfo
+    {
+        std::string_view vendor;
+        uint16_t product = 0;
+        std::string_view model;
+        std::string_view dataString;
+        std::string_view connector;
+        std::string_view deviceId;
+        bool internal = false;
+        bool hasEdid = false;
+    };
 
     struct GamescopeScript_t
     {
@@ -30,7 +48,7 @@ namespace gamescope
 
             sol::table KnownDisplays;
 
-            std::optional<std::pair<std::string_view, sol::table>> LookupDisplay( CScriptScopedLock &script, std::string_view psvVendor, uint16_t uProduct, std::string_view psvModel, std::string_view psvDataString );
+            std::optional<std::pair<std::string_view, sol::table>> LookupDisplay( CScriptScopedLock &script, const GamescopeDisplayLookupInfo &display );
         } Config;
     };
 

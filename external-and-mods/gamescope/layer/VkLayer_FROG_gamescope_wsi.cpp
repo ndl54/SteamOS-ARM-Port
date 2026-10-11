@@ -3,6 +3,7 @@
 #define VK_USE_PLATFORM_XLIB_KHR
 #include "vkroots.h"
 #include "xcb_helpers.hpp"
+#include "surface_format_utils.hpp"
 #include "vulkan_operators.hpp"
 #include "gamescope-swapchain-client-protocol.h"
 #include "gamescope-limiter-client-protocol.h"
@@ -865,9 +866,9 @@ namespace GamescopeWSILayer {
     }
 
     static constexpr std::array<VkSurfaceFormat2KHR, 3> s_ExtraHDRSurfaceFormat2s = {{
-      { .surfaceFormat = { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT, } },
-      { .surfaceFormat = { VK_FORMAT_A2R10G10B10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT, } },
-      { .surfaceFormat = { VK_FORMAT_R16G16B16A16_SFLOAT,      VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT, } },
+      { .sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR, .surfaceFormat = { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT, } },
+      { .sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR, .surfaceFormat = { VK_FORMAT_A2R10G10B10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT, } },
+      { .sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR, .surfaceFormat = { VK_FORMAT_R16G16B16A16_SFLOAT,      VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT, } },
     }};
 
     static constexpr auto s_ExtraHDRSurfaceFormats = []() {
@@ -896,9 +897,22 @@ namespace GamescopeWSILayer {
           !(canBypass || gamescopeSurface->canBypassXWayland(true)))
         return pDispatch->GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, selectedSurface, pSurfaceFormatCount, pSurfaceFormats);
 
-      return vkroots::helpers::append(
+      std::vector<VkSurfaceFormatKHR> underlyingSurfaceFormats;
+      VkResult result = SurfaceFormatUtils::enumerate(
         pDispatch->GetPhysicalDeviceSurfaceFormatsKHR,
+        underlyingSurfaceFormats,
+        physicalDevice,
+        selectedSurface);
+      if (result != VK_SUCCESS)
+        return result;
+
+      const auto extraHDRSurfaceFormats = SurfaceFormatUtils::filterByUnderlyingVkFormat(
         s_ExtraHDRSurfaceFormats,
+        underlyingSurfaceFormats);
+
+      return SurfaceFormatUtils::append(
+        pDispatch->GetPhysicalDeviceSurfaceFormatsKHR,
+        extraHDRSurfaceFormats,
         pSurfaceFormatCount,
         pSurfaceFormats,
         physicalDevice,
@@ -925,9 +939,22 @@ namespace GamescopeWSILayer {
           !(canBypass || gamescopeSurface->canBypassXWayland(true)))
         return pDispatch->GetPhysicalDeviceSurfaceFormats2KHR(physicalDevice, &surfaceInfo, pSurfaceFormatCount, pSurfaceFormats);
 
-      return vkroots::helpers::append(
+      std::vector<VkSurfaceFormat2KHR> underlyingSurfaceFormats;
+      VkResult result = SurfaceFormatUtils::enumerate(
         pDispatch->GetPhysicalDeviceSurfaceFormats2KHR,
+        underlyingSurfaceFormats,
+        physicalDevice,
+        &surfaceInfo);
+      if (result != VK_SUCCESS)
+        return result;
+
+      const auto extraHDRSurfaceFormats = SurfaceFormatUtils::filterByUnderlyingVkFormat(
         s_ExtraHDRSurfaceFormat2s,
+        underlyingSurfaceFormats);
+
+      return SurfaceFormatUtils::append(
+        pDispatch->GetPhysicalDeviceSurfaceFormats2KHR,
+        extraHDRSurfaceFormats,
         pSurfaceFormatCount,
         pSurfaceFormats,
         physicalDevice,

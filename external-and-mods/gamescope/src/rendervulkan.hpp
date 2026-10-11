@@ -300,6 +300,9 @@ struct FrameInfo_t
 	bool allowVRR;
 	bool applyOutputColorMgmt; // drm only
 	EOTF outputEncodingEOTF;
+	// The SDR shaper + 3D LUT are left to the output (msm DPU): set only when every
+	// layer is SDR and the shader skips its gamma 2.2 LUTs.
+	bool outputLuts;
 
 	// Maps output space onto the focused window's own space for absolute input.
 	// Not the base layer's transform, whose texture may already be upscaled.
@@ -510,6 +513,7 @@ struct gamescope_color_mgmt_t
 
 	// HDR Display Metadata Override & Tonemapping
 	ETonemapOperator hdrTonemapOperator = ETonemapOperator_None;
+	bool bHdrTonemapOperatorSet = false;
 	tonemap_info_t hdrTonemapDisplayMetadata = { 0 };
 	tonemap_info_t hdrTonemapSourceMetadata = { 0 };
 

@@ -30,6 +30,8 @@
  */
 
 #include "backend.h"
+#include "HDRGamma22.h"
+#include "HDRTonemap.h"
 #include "gamescope_shared.h"
 #include "backlight.hpp"
 #include "xwayland_ctx.hpp"
@@ -164,6 +166,7 @@ static lut3d_t g_tmpLut3d;
 extern int g_nDynamicRefreshHz;
 
 bool g_bForceHDRSupportDebug = false;
+extern bool g_bAppWantsHDRCached;
 extern float g_flInternalDisplayBrightnessNits;
 extern float g_flHDRItmSdrNits;
 extern float g_flHDRItmTargetNits;
@@ -583,7 +586,10 @@ static const gamescope_color_mgmt_t k_ScreenshotColorMgmtHDR =
 // sudo cpupower frequency-set --governor performance
 
 static void
-create_color_mgmt_luts(const gamescope_color_mgmt_t& newColorMgmt, gamescope_color_mgmt_luts outColorMgmtLuts[ EOTF_Count ])
+create_color_mgmt_luts(
+	const gamescope_color_mgmt_t& newColorMgmt,
+	gamescope_color_mgmt_luts outColorMgmtLuts[ EOTF_Count ],
+	bool bScaleSDRWhite )
 {
 	const displaycolorimetry_t& displayColorimetry = newColorMgmt.displayColorimetry;
 	const displaycolorimetry_t& outputEncodingColorimetry = newColorMgmt.outputEncodingColorimetry;
@@ -621,6 +627,11 @@ create_color_mgmt_luts(const gamescope_color_mgmt_t& newColorMgmt, gamescope_col
 				if ( newColorMgmt.outputEncodingEOTF == EOTF_Gamma22 )
 				{
 					// G22 -> G22. Does not matter what the g22 mult is
+					flGain *= gamescope::Gamma22HdrSDRInputScale(
+						bScaleSDRWhite,
+						newColorMgmt.outputEncodingEOTF,
+						newColorMgmt.flSDROnHDRBrightness,
+						newColorMgmt.flInternalDisplayBrightness );
 					tonemapping.g22_luminance = 1.f;
 					// xwm_log.infof("G22 -> G22");
 				}
@@ -649,8 +660,18 @@ create_color_mgmt_luts(const gamescope_color_mgmt_t& newColorMgmt, gamescope_col
 					tonemap_info_t source = newColorMgmt.hdrTonemapSourceMetadata;
 					tonemap_info_t dest = newColorMgmt.hdrTonemapDisplayMetadata;
 					// Otherwise, rely on the Vulkan source info and the EDID
-					// TODO: If source is invalid, use the provided metadata.
-					// TODO: If hdrTonemapDisplayMetadata is invalid, use the one provided by the display
+					bool bSynthesizedSource = false;
+					if ( !source.BIsValid() && newColorMgmt.appHDRMetadata )
+					{
+						const hdr_metadata_infoframe &infoframe = newColorMgmt.appHDRMetadata->View<hdr_output_metadata>().hdmi_metadata_type1;
+						source = gamescope::AppTonemapSourceInfo(
+							nits_from_u16( infoframe.max_cll ),
+							nits_from_u16( infoframe.max_display_mastering_luminance ) );
+						bSynthesizedSource = source.BIsValid();
+					}
+					if ( !dest.BIsValid() && bSynthesizedSource )
+						dest.flWhitePointNits = newColorMgmt.flInternalDisplayBrightness;
+					const tonemap_info_t destDisplay = dest;
 
 					// Adjust the source brightness range by the requested HDR input gain
 					dest.flBlackPointNits /= flGain;
@@ -659,7 +680,14 @@ create_color_mgmt_luts(const gamescope_color_mgmt_t& newColorMgmt, gamescope_col
 					if ( source.BIsValid() && dest.BIsValid() )
 					{
 						tonemapping.eOperator = newColorMgmt.hdrTonemapOperator;
-						tonemapping.eetf2390.init( source, newColorMgmt.hdrTonemapDisplayMetadata );
+						if ( gamescope::ShouldDefaultTonemapOperator(
+							bSynthesizedSource,
+							newColorMgmt.bHdrTonemapOperatorSet,
+							tonemapping.eOperator,
+							source.flWhitePointNits,
+							destDisplay.flWhitePointNits ) )
+							tonemapping.eOperator = ETonemapOperator_EETF2390_Independent;
+						tonemapping.eetf2390.init( source, destDisplay );
 					}
 					else
 					{
@@ -847,8 +875,13 @@ static CBacklightWatcher g_BacklightWatcher;
 static void
 update_color_mgmt()
 {
+	static bool s_bCurrentScaleSDRWhite = false;
 	if ( !GetBackend()->GetCurrentConnector() )
 		return;
+
+	const bool bScaleSDRWhite = gamescope::ShouldScaleGamma22SDRWhite(
+		g_bOutputHDREnabled, g_bAppWantsHDRCached,
+		GetBackend()->GetCurrentConnector()->GetHDRInfo().IsHDRG22() );
 
 	g_ColorMgmt.pending.flSoftwareBacklightGain = gamescope::GetSoftwareBacklightGain();
 
@@ -869,7 +902,11 @@ update_color_mgmt()
 	struct timespec t0, t1;
 #else
 	// check if any part of our color mgmt stack is dirty
-	if ( g_ColorMgmt.pending == g_ColorMgmt.current && g_ColorMgmt.serial != 0 )
+	if ( gamescope::ColorMgmtLutsAreCurrent(
+		g_ColorMgmt.pending == g_ColorMgmt.current,
+		g_ColorMgmt.serial != 0,
+		s_bCurrentScaleSDRWhite,
+		bScaleSDRWhite ) )
 		return;
 #endif
 
@@ -879,7 +916,7 @@ update_color_mgmt()
 
 	if (g_ColorMgmt.pending.enabled)
 	{
-		create_color_mgmt_luts(g_ColorMgmt.pending, g_ColorMgmtLuts);
+		create_color_mgmt_luts(g_ColorMgmt.pending, g_ColorMgmtLuts, bScaleSDRWhite);
 	}
 	else
 	{
@@ -913,13 +950,14 @@ update_color_mgmt()
 
 	g_ColorMgmt.serial = ++s_NextColorMgmtSerial;
 	g_ColorMgmt.current = g_ColorMgmt.pending;
+	s_bCurrentScaleSDRWhite = bScaleSDRWhite;
 }
 
 static void
 update_screenshot_color_mgmt()
 {
-	create_color_mgmt_luts(k_ScreenshotColorMgmt, g_ScreenshotColorMgmtLuts);
-	create_color_mgmt_luts(k_ScreenshotColorMgmtHDR, g_ScreenshotColorMgmtLutsHDR);
+	create_color_mgmt_luts(k_ScreenshotColorMgmt, g_ScreenshotColorMgmtLuts, false);
+	create_color_mgmt_luts(k_ScreenshotColorMgmtHDR, g_ScreenshotColorMgmtLutsHDR, false);
 }
 
 bool set_color_sdr_gamut_wideness( float flVal )
@@ -3813,8 +3851,24 @@ paint_all( global_focus_t *pFocus, bool async )
 		frameInfo.applyOutputColorMgmt = false;
 	}
 
+	// The output applies the gamma 2.2 shaper + 3D LUT post-blend, so the shader
+	// leaves them unbound and a composited frame is not corrected twice.
+	bool bOutputLUTs = GetBackend()->SupportsOutputLUTs() && GetBackend()->OutputLUTsReady() && !bDoMuraCompensation &&
+		g_ColorMgmt.current.enabled && g_ColorMgmtLuts[EOTF_Gamma22].HasLuts() &&
+		g_ColorMgmt.current.outputEncodingEOTF == EOTF_Gamma22 && g_ColorMgmt.current.displayEOTF == EOTF_Gamma22;
+	for ( int i = 0; i < frameInfo.layers.count(); i++ )
+	{
+		GamescopeAppTextureColorspace eColorspace = frameInfo.layers.get( i ).colorspace;
+		if ( eColorspace != GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB && eColorspace != GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR )
+			bOutputLUTs = false;
+	}
+	frameInfo.outputLuts = bOutputLUTs;
+
 	for (uint32_t i = 0; i < EOTF_Count; i++)
 	{
+		if ( bOutputLUTs && i == EOTF_Gamma22 )
+			continue;
+
 		if ( g_ColorMgmtLuts[i].HasLuts() )
 		{
 			frameInfo.shaperLut[i] = g_ColorMgmtLuts[i].vk_lut1d;
@@ -3923,6 +3977,17 @@ paint_all( global_focus_t *pFocus, bool async )
 			}
 
 			frameInfo.outputEncodingEOTF = bHDRScreenshot ? EOTF_PQ : EOTF_Gamma22;
+
+			// The output LUTs ran in the DPU, which Vulkan cannot replay; rebind the
+			// gamma 2.2 LUTs so the capture carries them (the present is already done).
+			if ( frameInfo.outputLuts && drmCaptureFormat != DRM_FORMAT_NV12 &&
+				oScreenshotInfo->eScreenshotType == GAMESCOPE_CONTROL_SCREENSHOT_TYPE_SCREEN_BUFFER &&
+				g_ColorMgmtLuts[EOTF_Gamma22].HasLuts() )
+			{
+				frameInfo.shaperLut[EOTF_Gamma22] = g_ColorMgmtLuts[EOTF_Gamma22].vk_lut1d;
+				frameInfo.lut3D[EOTF_Gamma22] = g_ColorMgmtLuts[EOTF_Gamma22].vk_lut3d;
+				frameInfo.outputLuts = false;
+			}
 
 			uint32_t uCompositeDebugBackup = g_uCompositeDebug;
 
@@ -7767,6 +7832,7 @@ handle_property_notify(xwayland_ctx_t *ctx, XPropertyEvent *ev)
 	if ( ev->atom == ctx->atoms.gamescopeHDRTonemapOperator )
 	{
 		g_ColorMgmt.pending.hdrTonemapOperator = (ETonemapOperator) get_prop( ctx, ctx->root, ctx->atoms.gamescopeHDRTonemapOperator, 0 );
+		g_ColorMgmt.pending.bHdrTonemapOperatorSet = ev->state == PropertyNewValue;
 		hasRepaint = true;
 	}
 

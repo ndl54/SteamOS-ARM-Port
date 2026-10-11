@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Recover a missing EVO gamepad using the Armada MCU Xbox-mode sequence.
+
+Use the existing UART lock/transport so lighting frames cannot interleave.
+An already usable Xbox or DirectInput pad is left in its current mode.
+"""
+from pathlib import Path
+import sys
+import time
+
+from pocket_evo_led import SerialLink, supported
+
+USB = Path('/sys/bus/usb/devices')
+FRAMES = (bytes.fromhex('e7 55 05 01 00 00 00 00 00 5b ed'), b'5505010000000000')
+
+
+def has_gamepad(root=USB):
+    for device in root.glob('*'):
+        try:
+            ids = ((device / 'idVendor').read_text().strip(),
+                   (device / 'idProduct').read_text().strip())
+        except OSError:
+            continue
+        if ids in (('045e', '028e'), ('4001', '0428')):
+            return True
+    return False
+
+
+def recover(link=None, usb=USB, delay=time.sleep):
+    if has_gamepad(usb):
+        return False
+    link = link or SerialLink(timeout=1.0)
+    with link.opened() as fd:
+        for frame in FRAMES:
+            link.write(fd, frame)
+            delay(0.1)
+    return True
+
+
+def main():
+    if not supported():
+        return 0
+    # Give the resumed Renesas controller time to enumerate before changing MCU mode.
+    for _ in range(20):
+        if has_gamepad():
+            return 0
+        time.sleep(0.1)
+    try:
+        if recover():
+            print('Pocket EVO: sent MCU gamepad recovery sequence')
+    except (OSError, TimeoutError) as error:
+        print(f'Pocket EVO controller recovery: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

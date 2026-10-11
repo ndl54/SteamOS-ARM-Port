@@ -1,0 +1,5 @@
+
+/* Keep the five-mode ICNA3512 descriptor specific to Pocket EVO. */
+&display_panel {
+	compatible = "ayaneo,pocketevo-panel", "chipone,icna3512";
+};

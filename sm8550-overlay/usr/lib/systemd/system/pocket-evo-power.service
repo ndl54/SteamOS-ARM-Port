@@ -1,0 +1,13 @@
+[Unit]
+Description=Pocket EVO UFS and charging fan policy
+After=systemd-modules-load.service systemd-udev-settle.service
+ConditionPathExists=/sys/firmware/devicetree/base/compatible
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/pocketevo/power.conf
+ExecStart=/usr/bin/python3 /usr/lib/pocketevo/pocket-evo-power
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

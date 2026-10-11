@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""EVO boot policy: UFS timeout and opt-in charging fan in native s2idle."""
+from pathlib import Path
+import os
+import sys
+
+
+def apply(sysfs=Path('/sys'), pwm='0'):
+    # Validate before any writes; configuration is an integer, never shell code.
+    speed = int(pwm)
+    if not 0 <= speed <= 255:
+        raise ValueError('POCKET_EVO_SLEEP_CHARGING_PWM must be 0..255')
+    compatible = (sysfs / 'firmware/devicetree/base/compatible').read_bytes().split(b'\0')
+    if b'ayaneo,pocketevo' not in compatible:
+        return
+    timeout = sysfs / 'module/ufshcd_core/parameters/uic_cmd_timeout'
+    if timeout.exists():
+        timeout.write_text('3000\n')
+    for hwmon in (sysfs / 'class/hwmon').glob('hwmon*'):
+        try:
+            name = (hwmon / 'name').read_text().strip()
+        except OSError:
+            continue
+        attr = hwmon / 'pwm1_sleep_charging'
+        if name == 'pwmfan' and attr.exists():
+            attr.write_text(f'{speed}\n')
+
+
+if __name__ == '__main__':
+    try:
+        apply(pwm=os.environ.get('POCKET_EVO_SLEEP_CHARGING_PWM', '0'))
+    except (OSError, ValueError) as error:
+        print(f'Pocket EVO power policy: {error}', file=sys.stderr)
+        sys.exit(1)

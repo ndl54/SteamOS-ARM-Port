@@ -88,8 +88,8 @@ wake_sources() {
     [[ -w $w ]] || continue
     echo disabled >"$w" 2>/dev/null
   done
-  # keep: pmic pwrkey (power button), gpio-keys
-  for dev in /sys/devices/platform/soc@0/*.spmi/spmi-0/*/*pon*/*pwrkey /sys/devices/platform/gpio-keys; do
+  # Only the PMIC power button wakes EVO; Volume Up and aya-keys do not.
+  for dev in /sys/devices/platform/soc@0/*.spmi/spmi-0/*/*pon*/*pwrkey; do
     [[ -w $dev/power/wakeup ]] && echo enabled >"$dev/power/wakeup"
   done
 }
@@ -247,6 +247,7 @@ touch_on() {
 post() {
   report_end
   step ufs_on
+  step /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-controller
   if light; then
     step wifi_watch_start
     systemctl kill -s HUP konkrd.service >/dev/null 2>&1
