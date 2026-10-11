@@ -2,9 +2,13 @@
   "artifact_directory": "../Steam-OS-ARM-PocketEvo-build/audit-build-20261011",
   "kernel": "pass",
   "inputplumber": "pass; target-rootfs version and dependencies verified",
-  "gamescope": "failed at missing namespace; source repaired, not rebuilt; C++ tests not run",
+  "gamescope": "pass on explicitly authorized rebuild; all tests and package/runtime checks pass; hardware untested",
   "hardware": "not tested",
-  "compilation_attempts_per_component": 1,
+  "compilation_attempts_per_component": {
+    "kernel": 1,
+    "inputplumber": 1,
+    "gamescope": 2
+  },
   "files": {
     "kernel/7.2.8-pocketevo-steamos/boot/KERNEL": {
       "size": 19902464,
@@ -21,6 +25,70 @@
     "inputplumber/inputplumber-0.81.0-konkr": {
       "size": 9573448,
       "sha256": "135cfea2d5ad22111ee91ce0ea9c68d57535030d9bcf7e27a7e9a1283a8fc384"
+    }
+  },
+  "gamescope_followup": {
+    "source_repository": "https://github.com/ndl54/SteamOS-ARM-Port",
+    "source_commit": "3ad7c44339521e010fdf4e8471abb24174265f52",
+    "version": "3.16.30-steamos-arm",
+    "architecture": "aarch64",
+    "rootfs": "SteamOS 0.5.3, BUILD_ID 20261002.6232440, glibc 2.39",
+    "compiler": "GCC 15.1.1",
+    "max_required_glibc": "2.38",
+    "build": "PASS; incremental continuation of prior failed build after namespace fix; no further source changes required",
+    "tests": {
+      "meson": {
+        "pass": 74,
+        "fail": 0,
+        "skip": 0
+      },
+      "gamescope_unfiltered": {
+        "cases": 62,
+        "assertions": 398
+      },
+      "wsi_unfiltered": {
+        "cases": 4,
+        "assertions": 25
+      },
+      "lua_profile": 4,
+      "python_regressions": 38,
+      "led_ui": "PASS on macOS Node (builder has no node)"
+    },
+    "runtime": "--version, --help, ldd -r for four executables and WSI: PASS",
+    "hardware": "NOT TESTED; no compositor/device/DRM execution",
+    "led_rgb": "10/10 baseline file hashes unchanged",
+    "kernel_requirement": "Five OLED modes require the separately built 7.2.8-pocketevo-steamos kernel/DTB; this is a Gamescope bundle, not a bootable image",
+    "files": {
+      "build/layer/VkLayer_FROG_gamescope_wsi.aarch64.json": {
+        "size": 635,
+        "sha256": "2c65503f94ac0e835e9312458ee711582efa1d65de91926bcfef4bb1d4562365"
+      },
+      "build/layer/libVkLayer_FROG_gamescope_wsi_aarch64.so": {
+        "size": 321600,
+        "sha256": "bff8f9cc2fe5a294f9ee4cdd3c35dda25fbcd78895b76b0bc30a212179f0a04f"
+      },
+      "build/src/gamescope": {
+        "size": 4531024,
+        "sha256": "5569058776cce77b1661bc0fdc3fbb491d085199ee70caa5836e3cf465a1a9db"
+      },
+      "build/src/gamescopectl": {
+        "size": 246480,
+        "sha256": "be80b3ef42a75c015205072c60959f29ed6ac45c825794c527538c6aa9028e9e"
+      },
+      "build/src/gamescopereaper": {
+        "size": 229184,
+        "sha256": "f5bd1a36a4e1016b8adedd6cc07b8164bfbe6957db3153276f388550e1447070"
+      },
+      "build/src/gamescopestream": {
+        "size": 383168,
+        "sha256": "35ca7fe2c42800ad4c41314cf388ab188dd3e750a2c1dc6c2d1037a6074e75ec"
+      }
+    },
+    "artifact_directory": "../Steam-OS-ARM-PocketEvo-build/gamescope-final-20261011",
+    "archive": {
+      "name": "gamescope-3.16.30-pocket-evo-aarch64.tar.gz",
+      "size": 6680664,
+      "sha256": "c4c9727a73aff9d1b8544d1f7e197873497815f31b75f36b00f22128dfe0ff82"
     }
   }
 }
