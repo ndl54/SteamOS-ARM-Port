@@ -336,7 +336,12 @@ Item {
         Card {
             id: log
             readonly property var rows: dash.st.sessions || []
-            readonly property bool shown: rows.length > 0 && (dash.st.fps === undefined || dash.st.fps === null)
+            // Between games only. Not keyed on the frame rate: gamescope
+            // reports one whenever Steam's UI redraws, so the card came and
+            // went every few seconds and squeezed the page (AYN Thor).
+            // Focus is an app ID; non-Steam games or missing manifests can
+            // leave the display name empty while a game is still focused.
+            readonly property bool shown: rows.length > 0 && !(dash.st.game && dash.st.game.appid)
             Layout.fillWidth: true
             Layout.fillHeight: shown
             Layout.preferredHeight: shown ? 100 * Ui.s : 0
