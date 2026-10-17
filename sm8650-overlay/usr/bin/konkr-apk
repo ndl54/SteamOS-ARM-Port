@@ -57,33 +57,47 @@ ensure_lepton() {
 # updates overwrite the tool.
 patch_lepton() {
   python3 - "${LEPTON_DIR}" <<'EOF'
-import sys, pathlib
+import os, sys, pathlib, stat, tempfile
 root = pathlib.Path(sys.argv[1])
-def patch(name, old, new, *, shared_anchor=False):
+pending = {}
+def read(f):
+    f = f.resolve(strict=True)
+    return pending[f] if f in pending else f.read_text()
+def stage(f, text):
+    pending[f.resolve(strict=True)] = text
+def patch(name, old, new, *, shared_anchor=False, required=False):
     f = root / name
-    s = f.read_text()
+    s = read(f)
+    if required and (s.count(old) + s.count(new) != 1):
+        raise SystemExit(f"konkr-apk: ambiguous or missing Lepton {name} persistence signature; Android was not started")
     # Several insertions may share an anchor. Check the inserted body too,
     # since another insertion can separate it from that anchor on restart.
+    if shared_anchor and s.count(new[len(old):]) > 1 and s.count(old) == 1:
+        # Repair duplicate exact blocks left by earlier patcher versions.
+        stage(f, s.replace(new[len(old):], '').replace(old, new, 1))
+        return
     if new in s or (shared_anchor and new[len(old):] in s):
         return
     if old not in s:
+        if required:
+            raise SystemExit(f"konkr-apk: unsafe Lepton {name}: required patch signature missing; Android was not started")
         print(f"konkr-apk: WARN {name} changed upstream, patch skipped", file=sys.stderr)
         return
-    f.write_text(s.replace(old, new, 1))
+    stage(f, s.replace(old, new, 1))
 
 # A Steam launch without an APK boots straight to Android (like `dev`), but
 # keeps its data like a Steam game.
 patch("lepton",
       '        if ! is_steamlaunch && ! is_app; then\n            continue_boot_after_bake\n',
       '        # konkr-apk: shared Android without an app\n'
-      '        if ! is_app; then\n            continue_boot_after_bake\n')
+      '        if ! is_app; then\n            continue_boot_after_bake\n', required=True)
 
 patch("lepton",
       '        if is_steamlaunch || [[ "${LEPTON_CONTEXT}" == *.apk ]]; then\n'
       '            if [[ -z "${APP_PACKAGE_ID}" ]]; then\n',
       '        # konkr-apk: shared Android has no APK\n'
       '        if { is_steamlaunch && is_app; } || [[ "${LEPTON_CONTEXT}" == *.apk ]]; then\n'
-      '            if [[ -z "${APP_PACKAGE_ID}" ]]; then\n')
+      '            if [[ -z "${APP_PACKAGE_ID}" ]]; then\n', required=True)
 
 # Per-app persistent data only makes sense with an app (an empty app id
 # would move the whole compat dir into itself).
@@ -92,7 +106,17 @@ patch("liblepton/mounting.sh",
       '        PERSISTENT_DATA_PATH=',
       '    # konkr-apk: shared Android has no app id\n'
       '    if [[ -d "${STEAM_COMPAT_DATA_PATH:-}" && -n "$(get_app_id)" ]]; then\n'
-      '        PERSISTENT_DATA_PATH=')
+      '        PERSISTENT_DATA_PATH=', required=True)
+
+# Lepton removes the context's data overlay on every exit, and the shared
+# Android's overlay is its /data: every stop (idle, restart, shutdown) wiped
+# installed apps and the Google sign-in. Keep it unless the cleanup is wanted.
+patch("liblepton/liblepton.sh",
+      '    if [[ -n "${LEPTON_PREFIX:-}" ]]; then\n'
+      '        prepare_baked_data_for_removal\n',
+      '    if [[ -n "${LEPTON_PREFIX:-}" ]]; then\n'
+      '        # konkr-apk: keep the shared Android\'s /data\n'
+      '        [[ "${LEPTON_NO_CLEANUP:-false}" != "false" ]] || prepare_baked_data_for_removal\n', required=True)
 
 # Gamepads: the host's live /dev/input, which konkr-apk links pads from
 # (Waydroid only forwards touch/keyboard/mouse from Wayland). Steam
@@ -119,21 +143,30 @@ patch("liblepton/mounting.sh",
 
 # gamescope gives the shared Android window to the Steam title only when its
 # Wayland client sits in konkr-android.service's cgroup. Rootless podman
-# moves the container into its own libpod scope; split keeps it under the
-# service (which delegates its cgroup for this).
-patch("liblepton/mounting.sh",
-      '    # namespaces\n',
-      '    # namespaces\n'
-      '    # konkr-apk: container stays in konkr-android.service\n'
-      '    if [[ -n "${KONKR_LEPTON_OVERLAY:-}" ]]; then\n'
-      '        podman_cmdline --cgroups=split\n'
-      '    fi\n', shared_anchor=True)
+# moves the container into its own libpod scope; without cgroups of its own
+# it stays in the service's.
+# Upgrade an existing 050 patch too: simply inserting the new option would
+# leave --cgroups=split active after Delegate=yes has been removed. Normalize
+# only our exact guarded blocks, including duplicates from older patchers.
+f = root / "liblepton/mounting.sh"
+s = read(f)
+anchor = '    podman_cmdline --pid=private --ipc=private --uts=private\n'
+block = ('    # konkr-apk: container stays in konkr-android.service\n'
+         '    if [[ -n "${KONKR_LEPTON_OVERLAY:-}" ]]; then\n'
+         '        podman_cmdline --cgroups=disabled\n'
+         '    fi\n')
+if s.count(anchor) != 1:
+    raise SystemExit("konkr-apk: unsafe Lepton cgroup signature; Android was not started")
+updated = s.replace(block.replace('--cgroups=disabled', '--cgroups=split'), '').replace(block, '')
+updated = updated.replace(anchor, block + anchor, 1)
+if updated != s:
+    stage(f, updated)
 
 # Extra rootfs overlay (restored framework services, Play Store); Steam's
 # own Android games keep Valve's image.
 # These are alternatives, not two required patches: do not warn for the
 # unused spelling on every successful start. Preserve the quoted base paths.
-mounting = (root / "liblepton/mounting.sh").read_text()
+mounting = read(root / "liblepton/mounting.sh")
 for names in ('${LEPTON_OVERLAY} ${GUESTOS_OVERLAY}',
               '"${LEPTON_OVERLAY}" "${GUESTOS_OVERLAY}"'):
     old = f'    for OVERLAY in {names}; do\n'
@@ -145,12 +178,12 @@ for names in ('${LEPTON_OVERLAY} ${GUESTOS_OVERLAY}',
 else:
     print("konkr-apk: WARN overlay loop changed upstream, patch skipped", file=sys.stderr)
 
-# Lepton writes brand/model/manufacturer into its runtime waydroid.prop on
+# Lepton writes model/manufacturer into its runtime waydroid.prop on
 # every start. Match the certified identity from props_overlay, or Google
 # sees a Pixel 5 fingerprint on a "Valve Lepton" and refuses it again.
 # Old Lepton includes brand; 3.0.5 omits it. Select one alternative so the
 # shorter signature cannot patch the fallback inside the longer one.
-properties = (root / "liblepton/properties.sh").read_text()
+properties = read(root / "liblepton/properties.sh")
 for brand in ('    props_echo "ro.product.brand=Steam Frame"\n', ''):
     old = (brand + '    props_echo "ro.product.model=Lepton"\n'
            '    props_echo "ro.product.manufacturer=Valve"\n')
@@ -165,6 +198,26 @@ for brand in ('    props_echo "ro.product.brand=Steam Frame"\n', ''):
         break
 else:
     print("konkr-apk: WARN product identity changed upstream, patch skipped", file=sys.stderr)
+# Validate required signatures before publishing. Replace whole files beside their
+# resolved targets: an interrupted write cannot truncate a Steam script, and
+# symlinked Steam libraries retain their links. Partial publication is retried
+# idempotently next start; no Android data is moved or rewritten here.
+for f, text in pending.items():
+    info = f.stat()
+    if not stat.S_ISREG(info.st_mode):
+        raise SystemExit(f"konkr-apk: not a regular Lepton script: {f}")
+    fd, temp = tempfile.mkstemp(prefix=f".{f.name}.konkr-", dir=f.parent)
+    try:
+        with os.fdopen(fd, "w") as out:
+            os.fchown(out.fileno(), info.st_uid, info.st_gid)
+            os.fchmod(out.fileno(), stat.S_IMODE(info.st_mode))
+            out.write(text)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temp, f)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
 
 EOF
 }
@@ -323,8 +376,9 @@ overlay_dirs() {
 # --- titles -----------------------------------------------------------------
 
 add_title() {
-  local pkg="$1" path apk meta label activity desktop icon="${SYS}/icons/${pkg}.png"
-  path="$(asx "pm path $pkg" | sed -n 's/^package://p' | grep -m1 '\.apk$' || true)"
+  local pkg="$1" paths path apk meta label activity desktop icon="${SYS}/icons/${pkg}.png"
+  paths="$(asx "pm path $pkg" | sed -n 's/^package://p' | grep '\.apk$' || true)"
+  path="$(head -n1 <<<"$paths")"
   [[ -n "$path" ]] || return 0
   # Read it through Android: installs aren't reliably visible in the host
   # side of Lepton's /data overlay.
@@ -332,8 +386,15 @@ add_title() {
   asx "cat '$path'" >"$apk" || true
   mkdir -p "${SYS}/icons"
   mapfile -t meta < <(python3 "$APK_INFO" "$apk" "$icon" 2>/dev/null || true)
+  # Split apps (Chrome) can keep the icon in a split.
+  while [[ ! -f "$icon" ]] && read -r path; do
+    asx "cat '$path'" >"$apk" || continue
+    python3 "$APK_INFO" "$apk" "$icon" >/dev/null 2>&1 || true
+  done < <(tail -n +2 <<<"$paths")
   rm -f "$apk"
   activity="${meta[2]:-}"
+  # The launcher entry can live outside the base manifest too: ask Android.
+  [[ -n "$activity" ]] || activity="$(asx "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg" | tail -n1 | grep / || true)"
   [[ -n "$activity" ]] || return 0   # nothing to open (services, libraries)
   label="${meta[1]:-$pkg}"
   [[ -f "$icon" ]] || icon=android-package-archive
@@ -423,7 +484,7 @@ sync_pads() {
 # konkr-android.service body.
 cmd_daemon() {
   ensure_lepton
-  patch_lepton
+  patch_lepton || die "Lepton persistence patches failed; Android was not started."
   ensure_vrpaths
   mkdir -p "${SYS}/app" "${SYS}/data" "${SYS}/shadercache/fozpipelinesv6"
   touch "${SYS}/app/lepton-show-flatscreen"
@@ -521,11 +582,14 @@ unpack() {
 
 # Subshell: die/trap stay local to one file.
 cmd_install() (
-  local src tmp meta pkg apks=() size sid f n=0
+  # Subshell variables survive EXIT cleanup even when die exits a nested
+  # function; function-local variables can already be unwound at that point.
+  apks=(); sid=""; n=0
   src="$(realpath -- "$1")"
   [[ -f "$src" ]] || die "no such file: $1"
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap '[[ -z "$sid" ]] || asx "cmd_real package install-abandon $sid" >/dev/null || true; rm -rf "$tmp"' EXIT
+  trap 'exit 1' TERM INT HUP
   unpack "$src" "$tmp"
 
   mapfile -t meta < <(python3 "$APK_INFO" "$tmp/base.apk" 2>/dev/null || true)
@@ -535,16 +599,23 @@ cmd_install() (
   ensure_android
   apks=("$tmp/base.apk")
   for f in "$tmp"/*.apk; do [[ "$f" == "$tmp/base.apk" ]] || apks+=("$f"); done
-  # Stream into a PackageInstaller session (works for splits too).
+  # Stream into a PackageInstaller session (works for splits too). Through
+  # cmd_real: Lepton's cmd wrapper treats every install as its one Steam app
+  # and moves it onto a per-launch overlay, so it was gone after a restart.
   size=0
   for f in "${apks[@]}"; do size=$((size + $(stat -c %s "$f"))); done
-  sid="$(asx "pm install-create -r -g -S $size" | sed -n 's/.*\[\([0-9]*\)\].*/\1/p' || true)"
-  [[ -n "$sid" ]] || die "Android refused to install $(basename "$src")"
+  reply="$(asx "cmd_real package install-create -r -g -S $size")" ||
+    die "Android refused to install $(basename "$src")"
+  [[ "$reply" =~ ^Success:.*\[([0-9]+)\]$ ]] || die "Android refused to install $(basename "$src")"
+  sid="${BASH_REMATCH[1]}"
   for f in "${apks[@]}"; do
-    asx "pm install-write -S $(stat -c %s "$f") $sid $((n++)).apk -" <"$f" >/dev/null ||
+    reply="$(asx "cmd_real package install-write -S $(stat -c %s "$f") $sid $((n++)).apk -" <"$f")" &&
+      [[ "$reply" == Success* ]] ||
       die "copying $(basename "$src") into Android failed"
   done
-  asx "pm install-commit $sid" | grep -q Success || die "Android couldn't install $(basename "$src")"
+  reply="$(asx "cmd_real package install-commit $sid")" && [[ "$reply" == Success* ]] ||
+    die "Android couldn't install $(basename "$src")"
+  sid=""  # committed: later title/OBB failures must not abandon it
   if [[ -d "$tmp/obb" ]]; then
     asx "mkdir -p /sdcard/Android/obb/$pkg" || true
     for f in "$tmp"/obb/*.obb; do

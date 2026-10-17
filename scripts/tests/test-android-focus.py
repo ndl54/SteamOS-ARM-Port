@@ -30,6 +30,7 @@ def fixture(root, brand=True):
             name, old, _ = [ast.literal_eval(a) for a in node.value.args]
             if old not in files.get(name, ''):
                 files[name] = files.get(name, '') + old
+    files['liblepton/mounting.sh'] += '    podman_cmdline --pid=private --ipc=private --uts=private\n'
     files['liblepton/mounting.sh'] += '    for OVERLAY in "${LEPTON_OVERLAY}" "${GUESTOS_OVERLAY}"; do\n'
     files['liblepton/properties.sh'] = ('    props_echo "ro.product.brand=Steam Frame"\n' if brand else '') + '    props_echo "ro.product.model=Lepton"\n    props_echo "ro.product.manufacturer=Valve"\n'
     for name, data in files.items():
@@ -102,7 +103,7 @@ class AndroidFocus(unittest.TestCase):
                         self.assertEqual((root / 'liblepton/mounting.sh').read_text(), mount)
                         self.assertEqual((root / 'liblepton/properties.sh').read_text(), props)
                     self.assertEqual(first.stderr, '')
-                    self.assertEqual(mount.count('podman_cmdline --cgroups=split'), 1)
+                    self.assertEqual(mount.count('podman_cmdline --cgroups=disabled'), 1)
                     self.assertEqual(mount.count('podman_cmdline --ulimit stack=-1:-1'), 1)
                     self.assertEqual(props.count('# konkr-apk: certified identity'), 1)
                     blocks = re.findall(r'    # konkr-apk: (?:low mmap[^\n]*|container stays[^\n]*)\n    if .*?\n    fi\n', mount, re.S)
@@ -110,7 +111,7 @@ class AndroidFocus(unittest.TestCase):
                     for overlay in ('', '/overlay'):
                         r = shell('podman_cmdline() { echo "$*"; }\n' + ''.join(blocks), tmp, KONKR_LEPTON_OVERLAY=overlay)
                         self.assertEqual(r.returncode, 0, r.stderr)
-                        self.assertEqual(sorted(r.stdout.splitlines()), sorted(['--cgroups=split', '--ulimit stack=-1:-1']) if overlay else [])
+                        self.assertEqual(sorted(r.stdout.splitlines()), sorted(['--cgroups=disabled', '--ulimit stack=-1:-1']) if overlay else [])
                         r = shell('props_echo() { echo "$*"; }\n' + props, tmp, KONKR_LEPTON_OVERLAY=overlay)
                         expected = ['ro.product.brand=google', 'ro.product.model=Pixel 5', 'ro.product.manufacturer=Google'] if overlay else [x.split('"')[1] for x in original_props.splitlines()]
                         self.assertEqual(r.returncode, 0, r.stderr)

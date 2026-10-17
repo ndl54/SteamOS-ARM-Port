@@ -30,6 +30,7 @@ class LeptonReview(unittest.TestCase):
                 name, old, _ = [ast.literal_eval(a) for a in node.value.args]
                 if old not in fixtures.get(name, ''):
                     fixtures[name] = fixtures.get(name, '') + old
+            fixtures['liblepton/mounting.sh'] += '    podman_cmdline --pid=private --ipc=private --uts=private\n'
             fixtures['liblepton/properties.sh'] = (
                 '    props_echo "ro.product.model=Lepton"\n'
                 '    props_echo "ro.product.manufacturer=Valve"\n')
