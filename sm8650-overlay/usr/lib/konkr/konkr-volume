@@ -29,8 +29,10 @@ Runs as the session user (systemd --user; member of the audio group).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import re
 import subprocess
+import sys
 import threading
 import time
 
@@ -39,6 +41,16 @@ CARD = "0"
 DIGITAL = ("WSA_RX0 Digital Volume", "WSA_RX1 Digital Volume")
 PA = "Speakers Volume"
 PA_LEVEL = "17,17"
+
+
+def is_pocket_fit() -> bool:
+    # The shared overlay also installs this helper on S2, EVO and tablets.
+    # Match the full DT model: Pocket FIT Elite is a different device too.
+    try:
+        model = Path("/sys/firmware/devicetree/base/model").read_bytes()
+    except OSError:
+        return False
+    return model.rstrip(b"\0") == b"KONKR Pocket FIT"
 
 
 def run(*cmd: str) -> str:
@@ -130,6 +142,9 @@ class Volume:
 
 
 def main() -> None:
+    # Keep direct invocation as isolated as the systemd activation path.
+    if not is_pocket_fit():
+        return
     vol = Volume()
     vol.apply(force=True)
 
@@ -155,4 +170,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--check-board"]:
+        sys.exit(0 if is_pocket_fit() else 1)
     main()
