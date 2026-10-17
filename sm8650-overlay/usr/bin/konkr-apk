@@ -117,10 +117,19 @@ patch("liblepton/mounting.sh",
 
 # Extra rootfs overlay (restored framework services, Play Store); Steam's
 # own Android games keep Valve's image.
-patch("liblepton/mounting.sh",
-      '    for OVERLAY in ${LEPTON_OVERLAY} ${GUESTOS_OVERLAY}; do\n',
-      '    # konkr-apk: extra overlay\n'
-      '    for OVERLAY in ${LEPTON_OVERLAY} ${GUESTOS_OVERLAY} ${KONKR_LEPTON_OVERLAY:-}; do\n')
+# These are alternatives, not two required patches: do not warn for the
+# unused spelling on every successful start. Preserve the quoted base paths.
+mounting = (root / "liblepton/mounting.sh").read_text()
+for names in ('${LEPTON_OVERLAY} ${GUESTOS_OVERLAY}',
+              '"${LEPTON_OVERLAY}" "${GUESTOS_OVERLAY}"'):
+    old = f'    for OVERLAY in {names}; do\n'
+    new = ('    # konkr-apk: extra overlay\n'
+           f'    for OVERLAY in {names} ${{KONKR_LEPTON_OVERLAY:-}}; do\n')
+    if old in mounting or new in mounting:
+        patch("liblepton/mounting.sh", old, new)
+        break
+else:
+    print("konkr-apk: WARN overlay loop changed upstream, patch skipped", file=sys.stderr)
 
 # Lepton writes brand/model/manufacturer into its runtime waydroid.prop on
 # every start. Match the certified identity from props_overlay, or Google
@@ -287,7 +296,7 @@ overlay_dirs() {
   if [[ -d "${OVERLAY_ROOT}/lepton-${ver}" ]]; then
     dirs+=("${OVERLAY_ROOT}/lepton-${ver}")
   else
-    say "Lepton's Android image (${ver:-unknown}) is newer than this build's framework fixes; some apps may crash."
+    say "No framework fixes match Lepton's Android image (${ver:-unknown}); using its stock framework, some apps may crash."
   fi
   dirs+=("$(props_overlay "${ver:-unknown}")")
   echo "${dirs[*]}"
@@ -433,10 +442,17 @@ cmd_daemon() {
   # Google checked this Android in under the old, uncertified identity. With
   # no account signed in yet, clear that so it checks in again as certified.
   if [[ "$(cat "${SYS}/props-rev" 2>/dev/null)" != "$PROPS_REV" ]]; then
-    if ! asx 'dumpsys account' | grep -qE 'Account \{name=.*, type=com\.google\}'; then
-      asx 'pm clear com.google.android.gsf; pm clear com.google.android.gms; pm clear com.android.vending' >/dev/null || true
+    local accounts
+    if accounts="$(asx 'dumpsys account')" && [[ "$accounts" =~ Accounts:[[:space:]]*[0-9]+ ]]; then
+      # Only clear after an explicitly empty account list. A nonzero count
+      # with missing/redacted details is not proof that Google is absent.
+      if ! grep -qE 'Accounts:[[:space:]]*[0-9]*[1-9]|Account \{' <<<"$accounts"; then
+        asx 'pm clear com.google.android.gsf; pm clear com.google.android.gms; pm clear com.android.vending' >/dev/null || true
+      fi
+      echo "$PROPS_REV" >"${SYS}/props-rev"
+    else
+      say "Could not inspect Android accounts; keeping Google app data and retrying next start."
     fi
-    echo "$PROPS_REV" >"${SYS}/props-rev"
   fi
   echo "$GAMESCOPE_WAYLAND_DISPLAY" >"$READY"
 

@@ -14,13 +14,20 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${1:-root@frame.local}"
-SSH=(ssh -i ~/.ssh/konkr_steamos "$TARGET")
+# KONKR_SSH_OPTS: whitespace-separated ssh/scp options (no shell quoting).
+# Disable glob expansion while splitting: a ProxyCommand/IdentityFile may contain *.
+SSH_OPTS=(-i ~/.ssh/konkr_steamos)
+set -f
+SSH_OPTS+=(${KONKR_SSH_OPTS:-})
+set +f
+SSH=(ssh "${SSH_OPTS[@]}" "$TARGET")
 LEPTON=/home/steamos/.local/share/Steam/steamapps/common/Lepton
 CTR=lepton-steamlaunch-konkr-android
 WORK=/work/lepton-framework
 SMALI=https://bitbucket.org/JesusFreke/smali/downloads
 
 ver="$("${SSH[@]}" cat "$LEPTON/images/version.txt")"
+[[ "$ver" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "invalid Android image version: $ver" >&2; exit 1; }
 out="${HERE}/../payload/lepton-${ver}"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 echo "== Lepton Android image ${ver}"
@@ -43,16 +50,27 @@ colima ssh -- sudo bash -c "set -e; cd $WORK
 colima ssh -- sudo cat "$WORK/services.jar" >"$tmp/services.jar"
 
 echo "== compiling against it inside Android"
-scp -q -i ~/.ssh/konkr_steamos "$tmp/services.jar" "$HERE/compile-odex.sh" "$TARGET:/tmp/"
-"${SSH[@]}" "export XDG_RUNTIME_DIR=/run/user/1000; cd /tmp; P='sudo -Eu steamos HOME=/home/steamos podman'
+scp -q "${SSH_OPTS[@]}" "$tmp/services.jar" "$HERE/compile-odex.sh" "$TARGET:/tmp/"
+"${SSH[@]}" "set -e; export XDG_RUNTIME_DIR=/run/user/1000; cd /tmp; P='sudo -u steamos XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus HOME=/home/steamos podman'
   \$P cp /tmp/services.jar $CTR:/data/local/tmp/services.jar
   \$P cp /tmp/compile-odex.sh $CTR:/data/local/tmp/compile-odex.sh
   \$P exec $CTR /system/bin/sh /data/local/tmp/compile-odex.sh >/tmp/compile-odex.log 2>&1
   rm -rf /tmp/kout; \$P cp $CTR:/data/local/tmp/out /tmp/kout
   cp /tmp/services.jar /tmp/kout/system/framework/services.jar
   tar cf /tmp/kout.tar -C /tmp/kout ."
-rm -rf "$out"; mkdir -p "$out"
-"${SSH[@]}" cat /tmp/kout.tar | tar xf - -C "$out"
-[[ "$(find "$out" -type f | wc -l)" == 10 ]] || { echo "unexpected output in $out" >&2; exit 1; }
-find "$out" -name '._*' -delete
+# Validate a fresh sibling before replacing a previously usable payload.
+mkdir -p "${out%/*}"
+staged="$(mktemp -d "${out}.new.XXXXXX")"
+trap 'rm -rf "$tmp" "$staged"' EXIT
+"${SSH[@]}" cat /tmp/kout.tar | tar xf - -C "$staged"
+find "$staged" -name '._*' -delete
+(( $(find "$staged" -type f | wc -l) == 10 )) || { echo "unexpected output in $staged" >&2; exit 1; }
+# Keep the previous output recoverable even if publishing the new one fails.
+previous="${staged}.previous"
+if [[ -e "$out" || -L "$out" ]]; then mv "$out" "$previous"; fi
+if ! mv "$staged" "$out"; then
+  if [[ -e "$previous" || -L "$previous" ]]; then mv "$previous" "$out"; fi
+  exit 1
+fi
+rm -rf "$previous"
 echo "== $out"; find "$out" -type f | sort
