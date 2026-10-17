@@ -217,6 +217,24 @@ void wlserver_xdg_commit( ResListEntry_t entry )
 	nudge_steamcompmgr();
 }
 
+// Called with a live surface and the Wayland lock held, before this commit
+// reaches the compositor. Its feedback resources are no longer on the surface.
+static void discard_unroutable_x11_commit( ResListEntry_t &entry )
+{
+	assert( wlserver_is_lock_held() );
+	static bool warned = false;
+	if ( !warned )
+	{
+		wl_log.warnf( "Discarding X11 commit without an Xwayland server (further warnings suppressed)" );
+		warned = true;
+	}
+
+	wlserver_presentation_feedback_discard( entry.surf, entry.presentation_feedbacks );
+	wlr_buffer_unlock( entry.buf );
+	// The caller's entry destruction releases the sync timeline points. No
+	// compositor/GPU work was submitted for this entry, so no wait is needed.
+}
+
 void xwayland_surface_commit(struct wlr_surface *wlr_surface) {
 	wlr_surface->current.committed = 0;
 
@@ -255,7 +273,13 @@ void xwayland_surface_commit(struct wlr_surface *wlr_surface) {
 
 	if (wlserver_x11_surface_info)
 	{
-		assert(wlserver_x11_surface_info->xwayland_server);
+		// A commit without an owning Xwayland server cannot be routed.
+		// Discard it instead of aborting the entire session.
+		if ( !wlserver_x11_surface_info->xwayland_server )
+		{
+			discard_unroutable_x11_commit( entry );
+			return;
+		}
 		wlserver_x11_surface_info->xwayland_server->wayland_commit( std::move( entry ) );
 	}
 	else if (wlserver_xdg_surface_info)
@@ -951,9 +975,10 @@ void gamescope_xwayland_server_t::handle_override_window_content( struct wl_clie
 				ResListEntry_t pending = std::move( *it );
 
                 // Still have the buffer lock from before...
-                assert(x11_surface);
-                assert(x11_surface->xwayland_server);
-                x11_surface->xwayland_server->wayland_commit( std::move( pending ) );
+                if ( x11_surface->xwayland_server )
+                    x11_surface->xwayland_server->wayland_commit( std::move( pending ) );
+                else
+                    discard_unroutable_x11_commit( pending );
 
                 it = g_PendingCommits.erase(it);
             }
@@ -4025,9 +4050,10 @@ static void wlserver_x11_surface_info_set_wlr( struct wlserver_x11_surface_info 
 
 			// Still have the buffer lock from before...
 			wlserver_x11_surface_info *wlserver_x11_surface_info = get_wl_surface_info(wlr_surf)->x11_surface;
-			assert(wlserver_x11_surface_info);
-			assert(wlserver_x11_surface_info->xwayland_server);
-			wlserver_x11_surface_info->xwayland_server->wayland_commit( std::move( pending ) );
+			if ( wlserver_x11_surface_info && wlserver_x11_surface_info->xwayland_server )
+				wlserver_x11_surface_info->xwayland_server->wayland_commit( std::move( pending ) );
+			else
+				discard_unroutable_x11_commit( pending );
 
 			it = g_PendingCommits.erase(it);
 		}
