@@ -563,6 +563,8 @@ install_file "$OVL/etc/profile.d/sm8550-gamepad.sh" \
   "$R/etc/profile.d/sm8550-gamepad.sh" 0644
 "${SCRIPT_DIR}/install-inputplumber-sm8550.sh" "$R"
 "${SCRIPT_DIR}/install-qcom-gyro-sm8550.sh" "$R"
+# Bluetooth and display settings pages for Desktop Mode (not in Valve's repos).
+STEAMOS_WORK="$WORKDIR" "${SCRIPT_DIR}/install-kde-extras.sh" "$R"
 
 # ---------------------------------------------------------------------------
 # SM8650 device overlay: Pocket FIT pad (XInput → deck-uhid), APS2 UCM,
