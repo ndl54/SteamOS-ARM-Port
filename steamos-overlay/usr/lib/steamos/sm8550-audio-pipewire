@@ -35,6 +35,11 @@ if grep -qaE "KONKR Pocket FIT|AYANEO Pocket S2" /sys/firmware/devicetree/base/m
   UCM_ONLY=1
 fi
 [ "$POCKET_EVO" = 0 ] || UCM_ONLY=1
+# SM8250 cards have their own PCM ordering and UCM routes. Never run the
+# Odin 2 pro-audio/MI2S mixer fallback on these boards.
+if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'qcom,sm8250'; then
+  UCM_ONLY=1
+fi
 
 MODE=once
 case "${1:-}" in

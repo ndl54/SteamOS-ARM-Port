@@ -36,6 +36,13 @@ if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx
   exit 0
 fi
 
+# SM8250 profiles are applied by WirePlumber. Retroid/MANGMI/MICRO 2 card
+# names are not in the older wait list, and none use Odin 2's fallback.
+if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'qcom,sm8250'; then
+  log "SM8250 card: UCM applied by WirePlumber"
+  exit 0
+fi
+
 wait_card() {
   local i
   for i in $(seq 1 80); do

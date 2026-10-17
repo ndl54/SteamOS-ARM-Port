@@ -1,8 +1,10 @@
 [Unit]
-Description=One brightness slider for both AYN Thor screens
+Description=One brightness slider for both AYN Thor / Thor Lite screens
 # Follow Game Mode's top-panel writes through gamescope and cover the bottom
 # brightness file for direct writes before the display manager starts.
-ConditionFirmware=device-tree-compatible(ayn,thor)
+# Thor and Thor Lite share the same panel layout.
+ConditionFirmware=|device-tree-compatible(ayn,thor)
+ConditionFirmware=|device-tree-compatible(ayn,thor-lite)
 After=systemd-udev-settle.service local-fs.target
 Before=display-manager.service graphical.target
 
