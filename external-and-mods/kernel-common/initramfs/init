@@ -31,7 +31,7 @@ session=""
 for arg in $(cat /proc/cmdline); do
   case "$arg" in
     konkr.bootlog_wait=*) extra="${arg#*=}" ;;
-    steamos.debug=1|steamos.screenlog=1) debug=1 ;;
+    steamos.debug=1|steamos.screenlog=1|steamos.logupload=1) debug=1 ;;
     steamos.usbshell=1) usbshell=1 ;;
     steamos.usbimage=1) usbimage=1 ;;
     steamos.root=*) steamosroot="${arg#steamos.root=}" ;;

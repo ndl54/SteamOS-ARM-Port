@@ -80,6 +80,101 @@ if grep -qE '(^|[[:space:]])steamos[.]screenlog=1([[:space:]]|$)' /proc/cmdline;
   screen_pid=$!
 fi
 
+# Upload is separate from selecting Desktop Mode: both exact tokens are
+# required. steamos.logupload=1 consents to sending unredacted system/user
+# journals and Steam logs (which may contain personal data) to gofile.io.
+# No debug/debug.txt file, debug flag or Desktop selection alone sends data.
+upload_pid=
+if grep -qE '(^|[[:space:]])steamos[.]session=plasma([[:space:]]|$)' /proc/cmdline &&
+   grep -qE '(^|[[:space:]])steamos[.]logupload=1([[:space:]]|$)' /proc/cmdline; then
+  (
+    umask 077
+    # The Desktop is user-controlled; never follow its paths as root when
+    # creating the status file (including a pre-existing LOG-LINK symlink).
+    runuser -u steamos -- mkdir -p /home/steamos/Desktop || exit 1
+    upload_status() {
+      printf '%s\n' "$@" | runuser -u steamos -- tee /home/steamos/Desktop/LOG-LINK.txt >/dev/null
+    }
+    upload_status 'Preparing opted-in upload of unredacted journals and Steam logs to gofile.io.' || exit 1
+    for tool in curl python3 journalctl tar; do
+      command -v "$tool" >/dev/null 2>&1 || {
+        upload_status "Upload unavailable: missing $tool. No logs uploaded."; exit 1;
+      }
+    done
+    w=$(mktemp -d /run/steamos-arm-upload.XXXXXX) || {
+      upload_status 'Cannot create private upload directory. No logs uploaded.'; exit 1;
+    }
+    trap 'rm -rf "$w"' 0
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    mkdir "$w/logs" || exit 1
+    # Search the six previous boots, newest first, and pin the matching boot
+    # ID so journal rotation cannot change the relative offset at collection.
+    journalctl --list-boots --no-pager > "$w/logs/boots.txt" 2>/dev/null || {
+      upload_status 'Cannot list previous boots. No logs uploaded.'; exit 1;
+    }
+    b=
+    for i in 1 2 3 4 5 6; do
+      candidate=$(awk -v n="-$i" '$1 == n && length($2) == 32 && $2 !~ /[^[:xdigit:]]/ {print $2; exit}' "$w/logs/boots.txt")
+      [ -n "$candidate" ] || continue
+      if journalctl -b "$candidate" --no-pager -q -o cat _UID=1000 > "$w/probe" 2>/dev/null &&
+         grep -q 'gamescope version' "$w/probe"; then
+        b=$candidate; break
+      fi
+    done
+    [ -n "$b" ] || {
+      upload_status 'No Game Mode journal found in the six previous boots. No logs uploaded.'; exit 1;
+    }
+    echo "game mode boot ID: $b" >> "$w/logs/boots.txt"
+    if ! journalctl -b "$b" --no-pager -o short-monotonic > "$w/logs/journal-gamemode-boot.txt" 2>/dev/null ||
+       ! journalctl -b "$b" --no-pager -o short-monotonic _UID=1000 > "$w/logs/journal-gamemode-user.txt" 2>/dev/null ||
+       ! journalctl -b --no-pager -o short-monotonic > "$w/logs/journal-this-boot.txt" 2>/dev/null; then
+      upload_status 'Cannot collect journals. No logs uploaded.'; exit 1
+    fi
+    # Steam files are optional and describe their present contents, not a
+    # historical snapshot of the selected Game Mode boot. Do not follow links.
+    cp -RP /home/steamos/.local/share/Steam/logs "$w/logs/steam-logs" 2>/dev/null
+    cp -P /home/steamos/.steam/steam/logs/bootstrap_log.txt "$w/logs/" 2>/dev/null
+    ls -la /home/steamos/.local/share/Steam /home/steamos/.steam > "$w/logs/steam-dirs.txt" 2>&1
+    tar -C "$w/logs" -czf "$w/logs.tgz" . || {
+      upload_status 'Cannot pack logs. No logs uploaded.'; exit 1;
+    }
+    upload_status 'Waiting for network to upload unredacted logs to gofile.io. Connect from the taskbar.'
+    n=0
+    until curl -q -fsI -m 10 https://gofile.io >/dev/null 2>&1; do
+      n=$((n + 1))
+      [ "$n" -lt 120 ] || {
+        upload_status 'Network wait expired. No logs uploaded. Reboot with both upload tokens to retry.'; exit 1;
+      }
+      sleep 10
+    done
+    # Do not reuse a fixed archive after tar failure or treat curl stderr as
+    # JSON. Disable curlrc; retain HTTPS verification and do not follow redirects.
+    if curl -q -fsS -m 300 -F "file=@$w/logs.tgz" https://upload.gofile.io/uploadfile > "$w/response.json" 2>/dev/null; then
+      link=$(python3 -c '
+import json, re, sys
+try:
+    response = json.load(sys.stdin)
+    link = response["data"]["downloadPage"]
+    if response["status"] != "ok" or not isinstance(link, str) or not re.fullmatch(r"https://gofile[.]io/d/[A-Za-z0-9_-]+", link):
+        raise ValueError("invalid response")
+    print(link)
+except (ValueError, KeyError, TypeError):
+    sys.exit(1)
+' < "$w/response.json" 2>/dev/null) || link=
+    else
+      link=
+    fi
+    if [ -n "$link" ]; then
+      upload_status 'Logs uploaded to gofile.io. Anyone with this link may access them; share only as intended:' '' "$link"
+    else
+      upload_status 'Upload failed or no valid link returned. The service may have received logs. Reboot with both upload tokens to retry.'
+    fi
+  ) &
+  upload_pid=$!
+fi
+
 collect_logs() {
 mountpoint -q /boot || mount /boot 2>/dev/null
 # Some images mount BOOT read-only (the 8 Elite ones); the logs need it
@@ -257,12 +352,13 @@ runtime_evidence
 sync
 }
 
-if [ -n "$screen_pid" ]; then
+if [ -n "$screen_pid" ] || [ -n "$upload_pid" ]; then
   # Keep the service's main process alive even if the file destination fails.
   # The collector's exit/USB cleanup traps must finish before waiting for the
-  # screen worker, which deliberately runs until the service is stopped.
+  # upload worker and screen worker (the latter runs until service stop).
   ( collect_logs )
-  wait "$screen_pid"
+  [ -z "$upload_pid" ] || wait "$upload_pid"
+  [ -z "$screen_pid" ] || wait "$screen_pid"
 else
   collect_logs
 fi
