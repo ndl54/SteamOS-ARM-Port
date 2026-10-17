@@ -82,12 +82,12 @@ def label_release(root, version=None):
                 if seen:
                     continue
                 seen = True
-                line = f'PRETTY_NAME="SteamOS ARM {version}"\n'
+                line = f'PRETTY_NAME="Unofficial SteamOS ARM {version}"\n'
             out.append(line)
         if not seen:
             if out and not out[-1].endswith("\n"):
                 out.append("\n")
-            out.append(f'PRETTY_NAME="SteamOS ARM {version}"\n')
+            out.append(f'PRETTY_NAME="Unofficial SteamOS ARM {version}"\n')
         text = "".join(out)
         if original == text:
             continue

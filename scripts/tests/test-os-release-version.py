@@ -51,8 +51,8 @@ class ReleaseTests(unittest.TestCase):
         return p
 
     def label(self, version='1.3'):
-        self.assertIn(f'PRETTY_NAME="SteamOS ARM {version}"\n', self.osr.read_text())
-        self.assertEqual(self.osr.read_text().replace(f'SteamOS ARM {version}', 'SteamOS'), BASE)
+        self.assertIn(f'PRETTY_NAME="Unofficial SteamOS ARM {version}"\n', self.osr.read_text())
+        self.assertEqual(self.osr.read_text().replace(f'Unofficial SteamOS ARM {version}', 'SteamOS'), BASE)
 
     def test_preserves_identity_custom_keys_mode_and_idempotence(self):
         self.osr.chmod(0o640)
@@ -115,7 +115,7 @@ class ReleaseTests(unittest.TestCase):
         (self.root / 'etc').symlink_to('/config')
         self.write('config/os-release', BASE)
         L.label_release(self.root)
-        self.assertIn('SteamOS ARM 1.3', (self.root / 'config/os-release').read_text())
+        self.assertIn('Unofficial SteamOS ARM 1.3', (self.root / 'config/os-release').read_text())
 
     def test_image_upper_and_final_inventory_hash(self):
         upper = self.write('var/lib/overlays/etc/upper/os-release', BASE)
@@ -134,7 +134,7 @@ class ReleaseTests(unittest.TestCase):
         self.label()
         self.osr.write_text('ID=steamos\nCUSTOM=keep')
         L.label_release(self.root)
-        self.assertEqual(self.osr.read_text(), 'ID=steamos\nCUSTOM=keep\nPRETTY_NAME="SteamOS ARM 1.3"\n')
+        self.assertEqual(self.osr.read_text(), 'ID=steamos\nCUSTOM=keep\nPRETTY_NAME="Unofficial SteamOS ARM 1.3"\n')
 
     def test_fixed_tmp_symlink_is_untouched(self):
         outside = self.temp / 'outside'
