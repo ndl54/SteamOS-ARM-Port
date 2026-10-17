@@ -28,6 +28,7 @@ class WrapperService(BaseService):
     MANAGED_ENV_KEYS = (
         "DXVK_HDR",
         "DISABLE_LSFGVK",
+        "LSFG_CLASSIC",
         "DISABLE_LSFG",
         "DISABLE_VKBASALT",
         "ENABLE_VKBASALT",
