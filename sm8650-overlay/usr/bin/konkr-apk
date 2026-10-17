@@ -59,10 +59,12 @@ patch_lepton() {
   python3 - "${LEPTON_DIR}" <<'EOF'
 import sys, pathlib
 root = pathlib.Path(sys.argv[1])
-def patch(name, old, new):
+def patch(name, old, new, *, shared_anchor=False):
     f = root / name
     s = f.read_text()
-    if new in s:
+    # Several insertions may share an anchor. Check the inserted body too,
+    # since another insertion can separate it from that anchor on restart.
+    if new in s or (shared_anchor and new[len(old):] in s):
         return
     if old not in s:
         print(f"konkr-apk: WARN {name} changed upstream, patch skipped", file=sys.stderr)
@@ -113,7 +115,19 @@ patch("liblepton/mounting.sh",
       '    # konkr-apk: low mmap layout for LuaJIT\n'
       '    if [[ -n "${KONKR_LEPTON_OVERLAY:-}" ]]; then\n'
       '        podman_cmdline --ulimit stack=-1:-1\n'
-      '    fi\n')
+      '    fi\n', shared_anchor=True)
+
+# gamescope gives the shared Android window to the Steam title only when its
+# Wayland client sits in konkr-android.service's cgroup. Rootless podman
+# moves the container into its own libpod scope; split keeps it under the
+# service (which delegates its cgroup for this).
+patch("liblepton/mounting.sh",
+      '    # namespaces\n',
+      '    # namespaces\n'
+      '    # konkr-apk: container stays in konkr-android.service\n'
+      '    if [[ -n "${KONKR_LEPTON_OVERLAY:-}" ]]; then\n'
+      '        podman_cmdline --cgroups=split\n'
+      '    fi\n', shared_anchor=True)
 
 # Extra rootfs overlay (restored framework services, Play Store); Steam's
 # own Android games keep Valve's image.
@@ -134,20 +148,24 @@ else:
 # Lepton writes brand/model/manufacturer into its runtime waydroid.prop on
 # every start. Match the certified identity from props_overlay, or Google
 # sees a Pixel 5 fingerprint on a "Valve Lepton" and refuses it again.
-patch("liblepton/properties.sh",
-      '    props_echo "ro.product.brand=Steam Frame"\n'
-      '    props_echo "ro.product.model=Lepton"\n'
-      '    props_echo "ro.product.manufacturer=Valve"\n',
-      '    # konkr-apk: certified identity\n'
-      '    if [[ -n "${KONKR_LEPTON_OVERLAY:-}" ]]; then\n'
-      '        props_echo "ro.product.brand=google"\n'
-      '        props_echo "ro.product.model=Pixel 5"\n'
-      '        props_echo "ro.product.manufacturer=Google"\n'
-      '    else\n'
-      '    props_echo "ro.product.brand=Steam Frame"\n'
-      '    props_echo "ro.product.model=Lepton"\n'
-      '    props_echo "ro.product.manufacturer=Valve"\n'
-      '    fi\n')
+# Old Lepton includes brand; 3.0.5 omits it. Select one alternative so the
+# shorter signature cannot patch the fallback inside the longer one.
+properties = (root / "liblepton/properties.sh").read_text()
+for brand in ('    props_echo "ro.product.brand=Steam Frame"\n', ''):
+    old = (brand + '    props_echo "ro.product.model=Lepton"\n'
+           '    props_echo "ro.product.manufacturer=Valve"\n')
+    new = ('    # konkr-apk: certified identity\n'
+           '    if [[ -n "${KONKR_LEPTON_OVERLAY:-}" ]]; then\n'
+           '        props_echo "ro.product.brand=google"\n'
+           '        props_echo "ro.product.model=Pixel 5"\n'
+           '        props_echo "ro.product.manufacturer=Google"\n'
+           '    else\n' + old + '    fi\n')
+    if old in properties or new in properties:
+        patch("liblepton/properties.sh", old, new)
+        break
+else:
+    print("konkr-apk: WARN product identity changed upstream, patch skipped", file=sys.stderr)
+
 EOF
 }
 
@@ -552,9 +570,17 @@ schedule_idle_stop() {
 }
 
 cmd_run() {
-  local pkg="$1" comp appid focus gone=0 home=0 f
+  local pkg="$1" comp appid focus launch gone=0 home=0 f
   [[ "$pkg" =~ ^[A-Za-z0-9_.]+$ ]] || die "bad package name: $pkg"
+  # There is only one shared window/AppId. A second launcher must not
+  # steal its identity or clear it when the first launcher exits.
+  exec 9>"${RUNDIR}/konkr-android-run.lock"
+  flock -n 9 || die "Another Android title is running; close it before opening this one."
   ensure_android
+  # Install cleanup before assigning identity: errors/signals must hand the
+  # shared window back as well. run/store keep the lock until process exit.
+  trap 'set_window_appid 0; schedule_idle_stop' EXIT
+  trap 'asx "am force-stop '"$pkg"'" >/dev/null || true; exit 0' TERM INT HUP
   if ! asx "pm path $pkg" | grep -q '^package:'; then
     # A title from before the shared Android: install its old copy.
     f="$(compgen -G "${APPS}/${pkg}/base.apk" || true)"
@@ -564,15 +590,18 @@ cmd_run() {
   comp="$(asx "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg" | tail -n1 || true)"
   [[ "$comp" == */* ]] || die "${pkg} has nothing to open"
 
-  # Tell gamescope the shared Android window belongs to this Steam title.
   appid="$(steam_launch_appid)"
   set_window_appid "${appid:-0}"
   # Toggling "install unknown apps" at runtime kills the app; grant it upfront.
-  asx "appops set $pkg REQUEST_INSTALL_PACKAGES allow; am start -n $comp" >/dev/null || true
+  asx "appops set $pkg REQUEST_INSTALL_PACKAGES allow" >/dev/null || true
+  if ! launch="$(asx "am start -n $comp" 2>&1)"; then
+    die "Could not open ${pkg}: ${launch}"
+  fi
+  # Android's am can report an Activity error while returning exit status 0.
+  if grep -qE '(^Error|Exception)' <<<"$launch"; then
+    die "Could not open ${pkg}: ${launch}"
+  fi
 
-  # Steam counts a title as running while it owns a window, so hand the
-  # shared Android window back on the way out or Exit Game never finishes.
-  trap 'set_window_appid 0; asx "am force-stop '"$pkg"'" >/dev/null || true; schedule_idle_stop; exit 0' TERM INT HUP
   # Stay alive — Steam shows the title as running and keeps feeding the
   # controller to it — while the user is anywhere in Android (Home, Recents,
   # other apps). End when Steam's Exit Game kills us, or once the app has
@@ -586,8 +615,6 @@ cmd_run() {
       ((home < 2)) || break
     fi
   done
-  set_window_appid 0
-  schedule_idle_stop
 }
 
 # First login: a Play Store title, so there's something to start from.
@@ -621,7 +648,9 @@ EOF
 }
 
 cmd_idle_stop() {
-  pgrep -f "konkr-apk run " >/dev/null && return 0
+  # Use the same ownership lock for both run and store, including startup.
+  exec 9>"${RUNDIR}/konkr-android-run.lock"
+  flock -n 9 || return 0
   systemctl --user stop konkr-android.service
 }
 

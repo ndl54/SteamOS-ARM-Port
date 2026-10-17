@@ -28,7 +28,11 @@ class LeptonReview(unittest.TestCase):
             fixtures = {}
             for node in calls:
                 name, old, _ = [ast.literal_eval(a) for a in node.value.args]
-                fixtures[name] = fixtures.get(name, '') + old
+                if old not in fixtures.get(name, ''):
+                    fixtures[name] = fixtures.get(name, '') + old
+            fixtures['liblepton/properties.sh'] = (
+                '    props_echo "ro.product.model=Lepton"\n'
+                '    props_echo "ro.product.manufacturer=Valve"\n')
             for names in ('${LEPTON_OVERLAY} ${GUESTOS_OVERLAY}',
                           '"${LEPTON_OVERLAY}" "${GUESTOS_OVERLAY}"', '"${FUTURE}"'):
                 with self.subTest(names=names):
