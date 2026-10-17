@@ -19,7 +19,45 @@ mountpoint -q /boot || mount /boot 2>/dev/null
 if grep -qE '^[^ ]+ /boot [^ ]+ ro[, ]' /proc/mounts; then
   mount -o remount,rw /boot 2>/dev/null
 fi
-mkdir -p "$out" || { echo "bootdebug: /boot isn't writable, no logs" >&2; exit 0; }
+# No FAT boot partition (Lenovo Legion Y700 Gen 4 boots straight from
+# boot.img): the logs go to a USB stick (FAT32/exFAT) instead, if one is
+# plugged in within 2 minutes; otherwise to /boot/debug-logs on the system.
+if ! mountpoint -q /boot; then
+  usb=/run/steamos-arm-usblog
+  usb_mounted=0
+  cleanup_usb() {
+    # Only release a mount created here; never touch /boot or its early
+    # initramfs logger/loop device, or a mount owned by another collector.
+    [ "$usb_mounted" = 1 ] || return 0
+    sync
+    umount "$usb" || echo "bootdebug: could not unmount $usb" >&2
+  }
+  trap cleanup_usb 0
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  if ! mountpoint -q "$usb" && mkdir -p "$usb"; then
+    n=0
+    while [ "$n" -lt 24 ]; do
+      for dev in $(lsblk -rpno NAME,FSTYPE,HOTPLUG 2>/dev/null | awk '$3 == 1 && ($2 == "vfat" || $2 == "exfat") { print $1 }'); do
+        # HOTPLUG also includes non-USB media. Internal UFS is sd* too:
+        # use the USB ancestry check from the initramfs image selector.
+        case "$(readlink -f "/sys/class/block/${dev##*/}")" in
+          */usb*) ;;
+          *) continue ;;
+        esac
+        if mount -o rw "$dev" "$usb" 2>/dev/null; then
+          usb_mounted=1
+          out="$usb/debug-logs"
+          echo "bootdebug: logs to the USB stick $dev"
+          break 2
+        fi
+      done
+      n=$((n + 1)); sleep 5
+    done
+  fi
+fi
+mkdir -p "$out" || { echo "bootdebug: $out isn't writable, no logs" >&2; exit 0; }
 if [ "$pocket_evo" = 1 ]; then
 {
   date
