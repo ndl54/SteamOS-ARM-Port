@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
@@ -14,7 +15,8 @@ struct pipewire_state {
 	bool running;
 
 	struct pw_stream *stream;
-	uint32_t stream_node_id;
+	// Published by the PipeWire thread if startup proceeds before the node is ready.
+	std::atomic<uint32_t> stream_node_id;
 	std::atomic<bool> streaming;
 	struct spa_video_info_raw video_info;
 	struct spa_gamescope gamescope_info;

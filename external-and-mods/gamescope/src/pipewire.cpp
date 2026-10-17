@@ -13,6 +13,7 @@
 #include "main.hpp"
 #include "pipewire.hpp"
 #include "log.hpp"
+uint64_t get_time_in_nanos(); // steamcompmgr.cpp
 
 #include <spa/debug/format.h>
 
@@ -336,6 +337,8 @@ static void stream_handle_state_changed(void *data, enum pw_stream_state old_str
 		break;
 	case PW_STREAM_STATE_ERROR:
 	case PW_STREAM_STATE_UNCONNECTED:
+		state->streaming = false;
+		state->stream_node_id = SPA_ID_INVALID;
 		state->running = false;
 		break;
 	default:
@@ -671,6 +674,31 @@ static void run_pipewire(struct pipewire_state *state)
 bool init_pipewire(void)
 {
 	struct pipewire_state *state = &pipewire_state;
+	// Only used before the worker and compositor threads are started. No other
+	// thread can hold a capture buffer or access these PipeWire objects yet.
+	auto fail = [state]() {
+		state->running = false;
+		state->streaming = false;
+		state->stream_node_id = SPA_ID_INVALID;
+		if (state->stream)
+			pw_stream_destroy(state->stream);
+		if (state->core)
+			pw_core_disconnect(state->core);
+		if (state->context)
+			pw_context_destroy(state->context);
+		if (state->loop)
+			pw_loop_destroy(state->loop);
+		state->stream = nullptr;
+		state->core = nullptr;
+		state->context = nullptr;
+		state->loop = nullptr;
+		for (int &fd : nudgePipe) {
+			if (fd >= 0)
+				close(fd);
+			fd = -1;
+		}
+		return false;
+	};
 
 	pw_init(nullptr, nullptr);
 
@@ -682,19 +710,19 @@ bool init_pipewire(void)
 	state->loop = pw_loop_new(nullptr);
 	if (!state->loop) {
 		pwr_log.errorf("pw_loop_new failed");
-		return false;
+		return fail();
 	}
 
 	state->context = pw_context_new(state->loop, nullptr, 0);
 	if (!state->context) {
 		pwr_log.errorf("pw_context_new failed");
-		return false;
+		return fail();
 	}
 
 	state->core = pw_context_connect(state->context, nullptr, 0);
 	if (!state->core) {
 		pwr_log.errorf("pw_context_connect failed");
-		return false;
+		return fail();
 	}
 
 	state->stream = pw_stream_new(state->core, "gamescope",
@@ -703,7 +731,7 @@ bool init_pipewire(void)
 			nullptr));
 	if (!state->stream) {
 		pwr_log.errorf("pw_stream_new failed");
-		return false;
+		return fail();
 	}
 
 	static struct spa_hook stream_hook;
@@ -720,17 +748,32 @@ bool init_pipewire(void)
 	std::vector<const struct spa_pod *> format_params = build_format_params(&builder);
 
 	enum pw_stream_flags flags = (enum pw_stream_flags)(PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_ALLOC_BUFFERS);
+	state->running = true;
 	int ret = pw_stream_connect(state->stream, PW_DIRECTION_OUTPUT, PW_ID_ANY, flags, format_params.data(), format_params.size());
 	if (ret != 0) {
 		pwr_log.errorf("pw_stream_connect failed");
-		return false;
+		return fail();
 	}
 
-	state->running = true;
 	ret = 0;
+	// This runs on the main thread before wlserver_run and steamcompmgr. A PipeWire
+	// that never answers (seen on the Y700 Gen 4) used to hang
+	// gamescope here forever: black screen, Steam waiting on gamescope-0. Wait a
+	// bounded time, then let run_pipewire pick the node ID up whenever it comes.
+	const uint64_t deadline = get_time_in_nanos() + 5'000'000'000ull;
 	pw_loop_enter(state->loop);
-	while (state->stream_node_id == SPA_ID_INVALID) {
-		ret = pw_loop_iterate(state->loop, -1);
+	while (state->running && state->stream_node_id == SPA_ID_INVALID) {
+		const uint64_t now = get_time_in_nanos();
+		if (now >= deadline)
+			break;
+		// Round up to milliseconds, but never start another full 100 ms wait
+		// when less than that remains. Callback/scheduler time is not bounded.
+		const int timeout_ms = std::min<uint64_t>(100, (deadline - now + 999'999) / 1'000'000);
+		ret = pw_loop_iterate(state->loop, timeout_ms);
+		if (ret == -EINTR) {
+			ret = 0;
+			continue;
+		}
 		if (ret < 0)
 			break;
 	}
@@ -738,10 +781,17 @@ bool init_pipewire(void)
 
 	if (ret < 0) {
 		pwr_log.errorf("pw_loop_iterate failed");
-		return false;
+		return fail();
+	}
+	if (!state->running) {
+		pwr_log.errorf("stream disconnected or failed during startup");
+		return fail();
 	}
 
-	pwr_log.infof("stream available on node ID: %u", state->stream_node_id);
+	if (state->stream_node_id == SPA_ID_INVALID)
+		pwr_log.errorf("no stream node ID after 5s; continuing startup while PipeWire connects (capture clients may need to reconnect)");
+	else
+		pwr_log.infof("stream available on node ID: %u", state->stream_node_id.load());
 
 	std::thread thread(run_pipewire, state);
 	thread.detach();
@@ -781,6 +831,9 @@ void push_pipewire_buffer(struct pipewire_buffer *buffer)
 
 void nudge_pipewire(void)
 {
+	// Initialization can fail before a worker takes ownership of the pipe.
+	if (nudgePipe[1] < 0)
+		return;
 	if (write(nudgePipe[1], "\n", 1) < 0)
 		pwr_log.errorf_errno("nudge_pipewire: write failed");
 }
