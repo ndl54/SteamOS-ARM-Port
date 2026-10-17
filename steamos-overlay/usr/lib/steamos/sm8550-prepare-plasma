@@ -78,3 +78,41 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
     QT_QPA_PLATFORM XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
     XDG_SESSION_DESKTOP DESKTOP_SESSION >/dev/null 2>&1 || true
 fi
+
+# Seed missing idle-display settings once. An existing value (including true)
+# may be a user's choice, even on an old desktop: there is no ownership marker
+# proving otherwise. KConfig also reads the shipped /etc/xdg defaults.
+seed_display_idle_defaults() {
+  local profile first second actual
+  for profile in AC Battery LowBattery; do
+    # Different fallbacks distinguish an absent key from any explicit value,
+    # including empty or malformed strings. Do not use --type bool: its exit
+    # status describes the value, not whether the read command succeeded.
+    first=$(kreadconfig6 --file powerdevilrc --group "$profile" --group Display \
+      --key TurnOffDisplayWhenIdle --default true) || return 1
+    second=$(kreadconfig6 --file powerdevilrc --group "$profile" --group Display \
+      --key TurnOffDisplayWhenIdle --default false) || return 1
+    if [[ "$first" == true && "$second" == false ]]; then
+      kwriteconfig6 --file powerdevilrc --group "$profile" --group Display \
+        --key TurnOffDisplayWhenIdle false || return 1
+      # Some kwriteconfig versions do not propagate a failed sync. Do not
+      # mark completion unless the value can actually be read back.
+      actual=$(kreadconfig6 --file powerdevilrc --group "$profile" --group Display \
+        --key TurnOffDisplayWhenIdle --default true) || return 1
+      [[ "$actual" == false ]] || return 1
+    elif [[ "$first" != "$second" ]]; then
+      # A concurrent settings change: defer instead of guessing ownership.
+      return 1
+    fi
+  done
+}
+mark="${XDG_CONFIG_HOME:-$HOME/.config}/steamos-arm/display-off-idle-v1"
+if [[ ! -e "$mark" ]] && command -v kreadconfig6 >/dev/null 2>&1 \
+    && command -v kwriteconfig6 >/dev/null 2>&1; then
+  if seed_display_idle_defaults; then
+    { mkdir -p "${mark%/*}" && : >"$mark"; } || \
+      echo 'steamos-arm: could not mark idle display defaults; will retry next Desktop start' >&2
+  else
+    echo 'steamos-arm: idle display defaults incomplete; will retry next Desktop start' >&2
+  fi
+fi

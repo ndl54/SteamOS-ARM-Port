@@ -264,7 +264,11 @@ mkdir -p "$HOME_DST/.config" "$R/etc/skel/.config"
 install -m 0644 "$OVL/etc/xdg/kscreenlockerrc" "$HOME_DST/.config/kscreenlockerrc"
 install -m 0644 "$OVL/etc/xdg/kscreenlockerrc" "$R/etc/skel/.config/kscreenlockerrc"
 if [[ -f "$OVL/etc/xdg/powerdevilrc" ]]; then
-  install -m 0644 "$OVL/etc/xdg/powerdevilrc" "$HOME_DST/.config/powerdevilrc"
+  # Preserve existing user choices, including an explicit idle display policy.
+  # Missing keys inherit /etc/xdg; prepare-plasma seeds only missing defaults.
+  if [[ ! -e "$HOME_DST/.config/powerdevilrc" && ! -L "$HOME_DST/.config/powerdevilrc" ]]; then
+    install -m 0644 "$OVL/etc/xdg/powerdevilrc" "$HOME_DST/.config/powerdevilrc"
+  fi
   install -m 0644 "$OVL/etc/xdg/powerdevilrc" "$R/etc/skel/.config/powerdevilrc"
 fi
 
