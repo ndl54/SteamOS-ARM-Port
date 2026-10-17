@@ -40,6 +40,10 @@ cp -a "$S/rootfs/audio/ucm2/Qualcomm/sm8750/Lenovo-Y700-Gen4" "$U/Qualcomm/sm875
 cp -a "$S/rootfs/audio/ucm2/conf.d/sm8750/Lenovo-Y700-Gen4.conf" "$U/conf.d/sm8750/"
 # Tell the ABL each boot worked, or it gives up on the slot after 7.
 O="${HERE}/../steamos-overlay"
+# The SM8750 staging path copies selected overlay files, not all udev rules.
+# Keep this brightness permission with Elden support, including stock gamescope.
+install -Dm0644 "$O/usr/lib/udev/rules.d/99-steamos-arm-tablet-backlight.rules" \
+  "$R/usr/lib/udev/rules.d/99-steamos-arm-tablet-backlight.rules"
 install -Dm0755 "$O/usr/lib/steamos-arm/tablet-boot-ok" "$R/usr/lib/steamos-arm/tablet-boot-ok"
 install -Dm0644 "$O/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service" "$R/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service"
 mkdir -p "$R/usr/lib/systemd/system/multi-user.target.wants"
