@@ -295,12 +295,13 @@ install_tablet_boot() {
       # The drive's BOOT already has it all (stage-tablet-boot.sh); take it
       # from there, with only this panel's entry and no menu wait.
       local dtb="sm8650-lenovo-tb321fu-$panel.dtb" f
-      for f in EFI/BOOT/BOOTAA64.EFI EFI/BOOT/QCOMRAMP.EFI EFI/BOOT/grub.cfg EFI/BOOT/qcomramp.cfg \
+      for f in EFI/BOOT/BOOTAA64.EFI EFI/BOOT/QCOMRAMP.EFI boot/grub/grub.cfg EFI/BOOT/qcomramp.cfg \
                Image "dtb/$dtb" tablet/lenovo-legion-tab-gen3-boot.img; do
         [[ -s "/boot/$f" ]] || die "/boot/$f missing on the USB drive's BOOT"
       done
-      mkdir -p "$WORK/boot/EFI/BOOT" "$WORK/boot/dtb"
-      cp /boot/EFI/BOOT/BOOTAA64.EFI /boot/EFI/BOOT/QCOMRAMP.EFI /boot/EFI/BOOT/grub.cfg "$WORK/boot/EFI/BOOT/"
+      mkdir -p "$WORK/boot/EFI/BOOT" "$WORK/boot/boot/grub" "$WORK/boot/dtb"
+      cp /boot/EFI/BOOT/BOOTAA64.EFI /boot/EFI/BOOT/QCOMRAMP.EFI "$WORK/boot/EFI/BOOT/"
+      cp /boot/boot/grub/grub.cfg "$WORK/boot/boot/grub/grub.cfg"
       cp /boot/Image "$WORK/boot/Image"
       cp "/boot/dtb/$dtb" "$WORK/boot/dtb/"
       python3 - "/boot/EFI/BOOT/qcomramp.cfg" "$WORK/boot/EFI/BOOT/qcomramp.cfg" "$dtb" <<'PY' || die "no $panel entry in the GRUB config"
@@ -319,9 +320,9 @@ PY
       local mark="steamos-arm-boot-$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
       echo "SteamOS ARM Port boot partition (GRUB looks for this file)" >"$WORK/boot/$mark"
       sed -i -E "s|--file /[^ ]+ --set=root|--file /$mark --set=root|" \
-        "$WORK/boot/EFI/BOOT/qcomramp.cfg" "$WORK/boot/EFI/BOOT/grub.cfg"
+        "$WORK/boot/EFI/BOOT/qcomramp.cfg" "$WORK/boot/boot/grub/grub.cfg"
       grep -q -- "--file /$mark --set=root" "$WORK/boot/EFI/BOOT/qcomramp.cfg" \
-        && grep -q -- "--file /$mark --set=root" "$WORK/boot/EFI/BOOT/grub.cfg" \
+        && grep -q -- "--file /$mark --set=root" "$WORK/boot/boot/grub/grub.cfg" \
         || die "GRUB configs don't point at this ESP"
       grep -q 'root=PARTLABEL=STORAGE' "$WORK/boot/EFI/BOOT/qcomramp.cfg" || die "GRUB config has no root=PARTLABEL=STORAGE"
       flash_boot /boot/tablet/lenovo-legion-tab-gen3-boot.img ;;
