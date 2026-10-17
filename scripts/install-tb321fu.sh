@@ -93,18 +93,55 @@ done < <(sed -n 's/^[[:space:]]*\(Include\..*\.\)\{0,1\}File "\([^" ]*\)".*/\2/p
   "$U/Qualcomm/sm8650/TB321FU/"*.conf "$U/conf.d/sm8650/Lenovo-Y700-TB321FU.conf" | sort -u)
 
 # The ADSP takes at most 65280-byte buffers in 2-8 periods for this card;
-# PipeWire's default request fails (EINVAL) and nothing plays. Matched by the
-# card name, so no other device sees it.
-install -Dm0644 /dev/stdin "$R/usr/share/wireplumber/wireplumber.conf.d/51-lenovo-tb321fu-alsa.conf" <<'CONF'
-# Lenovo Legion Y700 Gen 3: buffer sizes the ADSP accepts for its card.
+# PipeWire's default request fails (EINVAL) and nothing plays. The Pocket
+# FIT's rules in /etc (53-konkr-audio, 54-konkr-quantum) match every
+# platform-sound card: they set 960-frame periods
+# and ask for a "HiFi (Headphones, Speaker)" profile this card doesn't have
+# (its mics are part of every HiFi profile), so WirePlumber fell back to
+# pro-audio, which plays raw PCMs without the UCM speaker and mic sequences:
+# one "Built-in Audio" output, no sound and no microphone. Fragments sort
+# within each directory, and /etc loads after /usr/share regardless of name.
+# The tablet's setup unit installs this into /etc before the session starts;
+# there 90 sorts after 53/54. Match both card and node properties exactly.
+rm -f "$R/usr/share/wireplumber/wireplumber.conf.d/51-lenovo-tb321fu-alsa.conf" \
+  "$R/usr/share/wireplumber/wireplumber.conf.d/90-lenovo-tb321fu-alsa.conf"
+install -Dm0644 /dev/stdin "$R/usr/share/steamos-arm/tb321fu/90-lenovo-tb321fu-alsa.conf" <<'CONF'
+# Lenovo Legion Y700 Gen 3: its own profile order and the buffer sizes the
+# ADSP accepts for its card (after the Pocket FIT's 53/54 rules).
 monitor.alsa.rules = [
   {
-    matches = [ { alsa.card_name = "Lenovo-Y700-TB321FU" }, { alsa.card_name = "Lenovo-QRD-2.0" } ]
+    matches = [
+      { alsa.card_name = "Lenovo-Y700-TB321FU" } { alsa.card_name = "Lenovo-QRD-2.0" }
+      { api.alsa.card.name = "Lenovo-Y700-TB321FU" } { api.alsa.card.name = "Lenovo-QRD-2.0" }
+    ]
     actions = {
       update-props = {
+        api.acp.auto-profile = true
+        api.acp.auto-port = true
+        device.profile = "HiFi (Headphones, Mic1, Speaker)"
         api.alsa.period-size = 1024
         api.alsa.period-num = 4
         api.alsa.headroom = 0
+        api.alsa.disable-tsched = false
+        node.force-quantum = 1024
+      }
+    }
+  }
+]
+device.profile.priority.rules = [
+  {
+    matches = [
+      { alsa.card_name = "Lenovo-Y700-TB321FU" } { alsa.card_name = "Lenovo-QRD-2.0" }
+      { api.alsa.card.name = "Lenovo-Y700-TB321FU" } { api.alsa.card.name = "Lenovo-QRD-2.0" }
+    ]
+    actions = {
+      update-props = {
+        priorities = [
+          "HiFi (Headphones, Mic1, Speaker)"
+          "HiFi (Headphones, Headset, Speaker)"
+          "HiFi"
+          "pro-audio"
+        ]
       }
     }
   }
@@ -234,6 +271,7 @@ Before=sysinit.target display-manager.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/install -Dm0644 /usr/share/steamos-arm/tb321fu/52-tb321fu.conf /etc/wireplumber/wireplumber.conf.d/52-tb321fu.conf
+ExecStart=/usr/bin/install -Dm0644 /usr/share/steamos-arm/tb321fu/90-lenovo-tb321fu-alsa.conf /etc/wireplumber/wireplumber.conf.d/90-lenovo-tb321fu-alsa.conf
 
 [Install]
 WantedBy=sysinit.target
@@ -291,6 +329,88 @@ TimeoutStartSec=90
 WantedBy=multi-user.target
 UNIT
 ln -sfn ../steamos-arm-tb321fu-usb.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tb321fu-usb.service"
+
+# The tablet has one USB controller for its two USB-C ports, muxed by TLMM
+# GPIO 58 (pmic-glink's c2-select): left alone the data lines stay on the
+# long-side charging port, so a controller or hub on the short-side port
+# (the data port) was never seen. Hold the line high to route data there.
+# gpioset (libgpiod 2) keeps the line for as long as it runs.
+install -Dm0755 /dev/stdin "$R/usr/lib/steamos-arm/tb321fu-usb-data-port" <<'SH'
+#!/bin/bash
+# Lenovo Legion Y700 Gen 3: route USB data to the short-side USB-C port.
+set -euo pipefail
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,tb321fu' || exit 0
+chip=$(gpiodetect | awk '/\[f100000\.pinctrl\]/ { print $1; exit }')
+[ -n "$chip" ] || { echo "no TLMM gpiochip" >&2; exit 1; }
+# A kernel whose UCSI driver takes c2-select-gpios (the 7.2.8 tablet kernel)
+# routes the port itself.
+info=$(gpioinfo -c "$chip" 58) || exit 1
+if grep -q 'consumer=' <<<"$info"; then
+  echo "GPIO 58 is already owned; leaving its consumer in control" >&2
+  exit 0
+fi
+exec gpioset -c "$chip" 58=1
+SH
+install -Dm0644 /dev/stdin "$R/usr/lib/systemd/system/steamos-arm-tb321fu-usb-data-port.service" <<'UNIT'
+[Unit]
+Description=Lenovo Legion Y700 Gen 3: USB data on the short-side USB-C port
+ConditionFirmware=device-tree-compatible(lenovo,tb321fu)
+# Let UCSI acquire c2-select before considering the userspace fallback.
+Requires=steamos-arm-tb321fu-usb.service
+After=steamos-arm-tb321fu-usb.service
+StartLimitBurst=3
+StartLimitIntervalSec=120
+
+[Service]
+ExecStart=/usr/lib/steamos-arm/tb321fu-usb-data-port
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+ln -sfn ../steamos-arm-tb321fu-usb-data-port.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tb321fu-usb-data-port.service"
+
+# UCSI sets the controller's role from the long-side connector: a charger or
+# a PC there turns it into a device and drops whatever is on the data port.
+# Put it back to host whenever something is attached to the short side.
+install -Dm0755 /dev/stdin "$R/usr/lib/steamos-arm/tb321fu-usb-host" <<'SH'
+#!/bin/bash
+# Lenovo Legion Y700 Gen 3: host mode while the short-side port has a partner.
+set -euo pipefail
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,tb321fu' || exit 0
+role=/sys/class/usb_role/a600000.usb-role-switch/role
+[ -e /sys/class/typec/port1-partner ] || exit 0
+sleep 2
+# A disconnect or role-switch removal can happen during the settling delay.
+[ -e /sys/class/typec/port1-partner ] && [ -e "$role" ] || exit 0
+current=$(cat "$role") || exit 1
+[ "$current" = host ] || echo host > "$role"
+SH
+install -Dm0644 /dev/stdin "$R/usr/lib/systemd/system/steamos-arm-tb321fu-usb-host.service" <<'UNIT'
+[Unit]
+Description=Lenovo Legion Y700 Gen 3: USB host mode for the short-side USB-C port
+ConditionFirmware=device-tree-compatible(lenovo,tb321fu)
+After=steamos-arm-tb321fu-usb.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/steamos-arm/tb321fu-usb-host
+TimeoutStartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+ln -sfn ../steamos-arm-tb321fu-usb-host.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tb321fu-usb-host.service"
+install -Dm0644 /dev/stdin "$R/usr/lib/udev/rules.d/91-steamos-arm-tb321fu-usb-host.rules" <<'RULES'
+# Lenovo Legion Y700 Gen 3: put host mode back when a USB-C partner or the role changes.
+# SYSTEMD_WANTS only starts on device activation, not subsequent change/remove.
+# Queue a nonblocking restart for each event; the service owns the delay and
+# rechecks the partner. A write-induced event sees host and performs no write.
+SUBSYSTEM=="typec", KERNEL=="port[01]-partner", ACTION=="add|remove", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", RUN+="/usr/bin/systemctl --no-block restart steamos-arm-tb321fu-usb-host.service"
+SUBSYSTEM=="usb_role", KERNEL=="a600000.usb-role-switch", ACTION=="change", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", RUN+="/usr/bin/systemctl --no-block restart steamos-arm-tb321fu-usb-host.service"
+RULES
 
 # Tell the ABL each boot worked, or it gives up on the slot after 7.
 O="${HERE}/../steamos-overlay"
