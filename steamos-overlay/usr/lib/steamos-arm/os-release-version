@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Label the installed release without changing Frame's OS/runtime identity.
+
+Boot reads only the installed inventory, never a staged candidate. Image
+assembly may supply --version before recording the final inventory hashes.
+Only PRETTY_NAME changes; VERSION, VERSION_ID, BUILD_ID and custom keys stay.
+"""
+import argparse
+import json
+import os
+import re
+import stat
+import tempfile
+from collections import deque
+from pathlib import Path
+
+INVENTORY = "usr/share/steamos-arm/update/installed.json"
+PENDING = "var/lib/konkr-update/pending"
+
+
+def rooted(root, rel, follow_final=True):
+    """Resolve image links inside ROOT, including absolute /usr/... links.
+
+    Never let an image's symlink read host files. Keep the final link when
+    choosing a destination: /etc/os-release becomes its own writable file.
+    """
+    todo, parts, links = deque(Path(rel).parts), [], 0
+    while todo:
+        part = todo.popleft()
+        if part in ("/", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        path = root.joinpath(*parts, part)
+        if path.is_symlink() and (todo or follow_final):
+            links += 1
+            if links > 40:
+                raise ValueError("too many symlinks in os-release path")
+            target = Path(os.readlink(path))
+            if target.is_absolute():
+                parts = []
+            todo.extendleft(reversed(target.parts))
+        else:
+            parts.append(part)
+    return root.joinpath(*parts)
+
+
+def label_release(root, version=None):
+    root = root.resolve()
+    # Recovery runs before switch_root. An unresolved/failed transaction must
+    # never promote its target version to the normal installed OS label.
+    if os.path.lexists(rooted(root, PENDING, follow_final=False)):
+        return
+    if version is None:
+        try:
+            data = json.loads(rooted(root, INVENTORY).read_text())
+            version = data.get("version") if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return
+    elif root == Path("/"):
+        raise ValueError("--version is for offline image roots only")
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", version):
+        return                              # no trustworthy installed version
+
+    rels = ["etc/os-release"]
+    if root != Path("/"):
+        rels += ["usr/lib/os-release", "var/lib/overlays/etc/upper/os-release"]
+    for rel in rels:
+        source = rooted(root, rel)
+        if not source.is_file():
+            continue
+        path = rooted(root, rel, follow_final=False)
+        # A parent link must not redirect a runtime /etc write into read-only /usr.
+        if root == Path("/") and path != root / rel:
+            continue
+        original = source.read_text()
+        out, seen = [], False
+        for line in original.splitlines(keepends=True):
+            if line.split("=", 1)[0] == "PRETTY_NAME":
+                if seen:
+                    continue
+                seen = True
+                line = f'PRETTY_NAME="SteamOS ARM {version}"\n'
+            out.append(line)
+        if not seen:
+            if out and not out[-1].endswith("\n"):
+                out.append("\n")
+            out.append(f'PRETTY_NAME="SteamOS ARM {version}"\n')
+        text = "".join(out)
+        if original == text:
+            continue
+        st = source.stat()
+        fd, temp = tempfile.mkstemp(prefix=".os-release-", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(text)
+                f.flush()
+                os.fchown(f.fileno(), st.st_uid, st.st_gid)
+                os.fchmod(f.fileno(), stat.S_IMODE(st.st_mode))
+                os.fsync(f.fileno())
+            os.replace(temp, path)
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("root", nargs="?", default="/")
+    parser.add_argument("--version", help="release of an offline image being assembled")
+    args = parser.parse_args()
+    label_release(Path(args.root), args.version)
+
+
+if __name__ == "__main__":
+    main()

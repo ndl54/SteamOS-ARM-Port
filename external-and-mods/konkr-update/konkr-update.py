@@ -618,7 +618,9 @@ def backup_plan(plan, root, home, work):
     """Copy what the plan will change, nothing else; record what didn't exist."""
     import stat as S
     index = {}
-    for key in plan_keys(plan):
+    # apply2 rewrites this generated file even though the signed target omits it.
+    # Back it up explicitly so a failed apply cannot leave the new release label.
+    for key in dict.fromkeys([*plan_keys(plan), 'root/' + INVENTORY]):
         if key == 'boot/KERNEL': continue
         p = real_path(key, root, home)
         try: st = os.lstat(p)
@@ -734,7 +736,10 @@ def apply2(root, boot, home, work):
 def restore2(root, boot, home, work):
     plan = json.loads((work / 'plan.json').read_text())
     index = json.loads((work / 'backup-index.json').read_text())
-    keys = [k for k in plan_keys(plan) if k != 'boot/KERNEL']
+    # Old transactions may have no inventory backup: remove the untrusted new
+    # inventory instead of advertising the failed release as installed.
+    keys = [k for k in dict.fromkeys([*plan_keys(plan), 'root/' + INVENTORY])
+            if k != 'boot/KERNEL']
     # Remove what the update created, then put back what it changed, parents first.
     for key in sorted(keys, key=lambda k: -k.count('/')):
         if index.get(key) is None:
@@ -789,7 +794,7 @@ def stage2(work, package, root_info, home_info, boot_info, model, pending,
         # extracting blobs/backups; reserve room for recovery and boot copies.
         blob_sizes = {e['f'][4]: e['f'][3] for e in target.values() if 'f' in e}
         backup_bytes = 0
-        for key in set(plan_keys(plan)):
+        for key in set([*plan_keys(plan), 'root/' + INVENTORY]):
             try: st = os.lstat(real_path(key, view, Path('/home'), Path('/boot')))
             except FileNotFoundError: continue
             if stat.S_ISREG(st.st_mode): backup_bytes += st.st_size
