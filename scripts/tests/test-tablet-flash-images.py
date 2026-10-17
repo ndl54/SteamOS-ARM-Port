@@ -82,34 +82,41 @@ class BootConfiguration(unittest.TestCase):
         self.assertFalse((esp / 'EFI/BOOT/grub.cfg').exists())
         return config
 
-    def test_first_stage_current_and_legacy_image_conversion(self):
-        fragment = SCRIPT[SCRIPT.index('  mkdir -p "$S/boot/grub"'):
-                          SCRIPT.index('  cp "$B"/steamos-arm-boot-*')]
-        for layout in ('current', 'legacy', 'missing', 'invalid'):
-            with self.subTest(layout=layout), tempfile.TemporaryDirectory() as temp:
-                source, target = Path(temp) / 'source', Path(temp) / 'target'
-                for directory in (source, target):
-                    (directory / 'EFI/BOOT').mkdir(parents=True)
-                current = self.stage_first_config(source)
-                legacy = current.replace('set timeout=0', 'set timeout=2') + (
-                    'menuentry "Reboot" {\n    reboot\n}\n'
-                    'menuentry "Power off" {\n    halt\n}\n')
-                if layout != 'current':
-                    (source / 'boot/grub/grub.cfg').unlink()
-                if layout in ('current', 'legacy'):
-                    (target / 'EFI/BOOT/grub.cfg').write_text(legacy)
-                elif layout == 'invalid':
-                    (target / 'EFI/BOOT/grub.cfg').write_text('set timeout=2\n')
+    def test_super_only_validation_and_preserved_userdata(self):
+        preflight = SCRIPT[SCRIPT.index('log() {'):SCRIPT.index('W=$(mktemp')]
+        for device, mode, tool_status, valid in (
+            ('tb321fu', '1', '1', True), ('elden', '1', '0', False),
+            ('tb321fu', 'invalid', '0', False), ('tb321fu', '0', '1', False),
+            ('elden', '0', '0', True),
+        ):
+            with self.subTest(device=device, mode=mode):
+                # Force the root identity only inside this isolated shell;
+                # command lookup must not require img2simg for super-only.
                 result = subprocess.run(['bash', '-euo', 'pipefail', '-c',
-                    'die() { echo "$*" >&2; exit 1; };\n' + fragment],
+                    'id() { echo 0; }; command() { return "$TOOL_STATUS"; };\n' + preflight],
                     capture_output=True, text=True,
-                    env={**os.environ, 'B': str(source), 'S': str(target)})
-                if layout in ('missing', 'invalid'):
-                    self.assertNotEqual(result.returncode, 0)
-                else:
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual((target / 'boot/grub/grub.cfg').read_text(), current)
-                    self.assertFalse((target / 'EFI/BOOT/grub.cfg').exists())
+                    env={**os.environ, 'DEV': device, 'SUPER_ONLY': mode,
+                         'TOOL_STATUS': tool_status, 'KO': '/mock/kernel'})
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+        setup = SCRIPT[SCRIPT.index('mkdir -p "$OUT"'):SCRIPT.index('B=$W/boot')]
+        for mode in ('0', '1'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
+                out, work = Path(temp) / 'out', Path(temp) / 'work'
+                out.mkdir()
+                for name in ('userdata.img', 'userdata.simg', 'boot.img', 'super.img', 'SHA256SUMS'):
+                    (out / name).write_text(name)
+                result = subprocess.run(['bash', '-euo', 'pipefail', '-c',
+                    'losetup() { echo /mock/loop; }; mount() { echo "$*"; };\n' + setup],
+                    capture_output=True, text=True, check=True,
+                    env={**os.environ, 'OUT': str(out), 'W': str(work),
+                         'IMG': '/mock/image', 'SUPER_ONLY': mode})
+                self.assertEqual(len(result.stdout.splitlines()), 1 if mode == '1' else 3)
+                for name in ('userdata.img', 'userdata.simg'):
+                    self.assertEqual((out / name).exists(), mode == '1')
+                    if mode == '1':
+                        self.assertEqual((out / name).read_text(), name)
+                for name in ('boot.img', 'super.img', 'SHA256SUMS'):
+                    self.assertFalse((out / name).exists())
 
     def test_internal_installer_copies_new_config_and_rekeys_both_stages(self):
         installer = (REPO / 'external-and-mods/ufs-install/install-masios-to-internal.sh').read_text()
@@ -180,47 +187,37 @@ flash_boot() { printf '%s' "$1" > "$WORK/mock-flash-call"; }
                     env={**os.environ, 'CMDLINE': cmdline}, check=True)
                 self.assertEqual(result.stdout, expected)
 
-    def test_current_panel_menu_rewrite(self):
-        # Render only the existing menu text template; never execute image or
-        # boot staging scripts, download assets, or run a kernel build.
-        stage = (REPO / 'scripts/stage-tb321fu-boot.sh').read_text()
-        template = stage.split('    cat <<CFG\n', 1)[1].split('\nCFG', 1)[0]
-        result = subprocess.run(['bash', '-c', '''
-source external-and-mods/kernel-tb321fu/soc.env
-source external-and-mods/kernel-common/cmdline.sh
-source external-and-mods/tb321fu-boot/release.env
-build_cmdline PARTLABEL=STORAGE
-printf '\\n%s' "$TB321FU_DISABLE_RESERVED"
-'''], cwd=REPO, capture_output=True, text=True, check=True)
-        cmdline, reserved = result.stdout.split('\n', 1)
-        menu = ''
-        for panel in ('boe', 'csot'):
-            entry = template
-            for key, value in {'name': f'SteamOS ARM Port ({panel.upper()} panel)',
-                               'MARK': 'test-marker', 'p': panel, 'CMDLINE': cmdline,
-                               'reserved': 'qcomfdtmem disable-reserved ' + ' '.join(reserved.split())}.items():
-                entry = entry.replace('$' + key, value)
-            menu += entry + '\n'
-        sed = re.search(r'sed -i (.*?) "\$f"', SCRIPT, re.S).group(1)
-        awk = re.search(r"awk '\n(.*?)\n\s*' \"\$S/", SCRIPT, re.S).group(1)
-        rewritten = subprocess.run(['bash', '-c', 'sed ' + sed], input=menu,
-                                   capture_output=True, text=True, check=True).stdout
-        output = subprocess.run(['awk', awk], input=rewritten,
-                                capture_output=True, text=True, check=True).stdout
-        entries = re.findall(r'menuentry "([^"]+)" \{(.*?)\n}', output, re.S)
-        self.assertEqual(len(entries), 4)
-        self.assertEqual(sum('boot text)' in title for title, _ in entries), 2)
-        for title, body in entries:
-            self.assertIn('root=PARTLABEL=userdata steamos.bootlabel=super', body)
-            self.assertNotIn('steamos.usbimage', body)
-            if 'boot text)' in title:
-                for quiet in (' quiet', 'efifb:off', 'drm_client_lib.active=none',
-                              '/reserved-memory/splash-region', 'loglevel=0'):
-                    self.assertNotIn(quiet, body)
-                self.assertIn('loglevel=7 console=tty0 systemd.show_status=1 rw rootwait', body)
-            else:
-                self.assertIn(' quiet', body)
-                self.assertIn('/reserved-memory/splash-region', body)
+    def test_one_stage_super_menu(self):
+        # Render only the menu on an ordinary temporary directory. No images,
+        # downloads, mounts, EFI binaries or kernel builds are executed.
+        fragment = SCRIPT[SCRIPT.index('  opts="root='):SCRIPT.index('  sync; umount "$S"')]
+        # macOS ships Bash 3; the product runs on Linux Bash 4+.
+        if os.uname().sysname == 'Darwin':
+            fragment = fragment.replace('${p^^}', '$(printf %s "$p" | tr a-z A-Z)')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'boot/grub').mkdir(parents=True)
+            (root / 'EFI/BOOT').mkdir(parents=True)
+            subprocess.run(['bash', '-euo', 'pipefail', '-c',
+                'die() { echo "$*" >&2; exit 1; };\n' + fragment], check=True,
+                env={**os.environ, 'S': temp})
+            config = (root / 'boot/grub/grub.cfg').read_text()
+            entries = re.findall(r'menuentry "([^"]+)" \{(.*?)\n}', config, re.S)
+            boot = [(title, body) for title, body in entries if title.startswith('SteamOS')]
+            self.assertEqual([title for title, _ in boot],
+                ['SteamOS ARM Port (CSOT panel)', 'SteamOS ARM Port (BOE panel)'])
+            for panel, (_, body) in zip(('csot', 'boe'), boot):
+                self.assertIn(f'devicetree /dtb/sm8650-lenovo-tb321fu-{panel}.dtb', body)
+                self.assertIn('linux /Image root=PARTLABEL=userdata rw rootwait rootfstype=ext4 steamos.bootlabel=super', body)
+                self.assertIn('firmware_class.path=/usr/lib/firmware/steamos-arm/tb321fu', body)
+            for obsolete in ('linuxdirect', 'chainloader', 'QCOMRAMP', 'usbimage', 'STORAGE', 'initrd ', ' quiet'):
+                self.assertNotIn(obsolete, config)
+            self.assertIn('set timeout=-1', config)
+            self.assertEqual(sum(title.startswith('Logs ') for title, _ in entries), 5)
+            self.assertIn('search --no-floppy --label userdata --set=ud', config)
+            self.assertEqual((root / 'EFI/BOOT/grub.cfg').read_text(),
+                             'configfile /boot/grub/grub.cfg\n')
+            self.assertTrue((root / 'debug').exists())
 
 
 if __name__ == '__main__':
