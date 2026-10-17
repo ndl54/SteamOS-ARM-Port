@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 
@@ -48,12 +49,39 @@ TABLET = _is_tablet()
 SOURCE = "the USB drive" if TABLET else "the SD card"
 
 
-def _pkexec(argv: list[str]) -> subprocess.CompletedProcess[str]:
-    if os.geteuid() == 0:
-        return subprocess.run(argv, check=False, text=True, capture_output=True)
-    if shutil.which("pkexec"):
-        return subprocess.run(["pkexec", *argv], check=False, text=True, capture_output=True)
-    return subprocess.run(["sudo", "--", *argv], check=False, text=True, capture_output=True)
+def _pkexec(argv: list[str], *, output=None) -> subprocess.CompletedProcess[str]:
+    if os.geteuid() != 0:
+        if shutil.which("pkexec"):
+            argv = ["pkexec", *argv]
+        else:
+            # The desktop launcher has no terminal for a sudo password prompt.
+            argv = ["sudo", "-n", "--", *argv]
+    return subprocess.run(
+        argv, check=False, stdin=subprocess.DEVNULL, text=True, errors="replace",
+        stdout=output if output is not None else subprocess.PIPE,
+        stderr=subprocess.STDOUT if output is not None else subprocess.PIPE,
+    )
+
+
+def run_install(argv: list[str]) -> tuple[int | None, str]:
+    """Wait for the privileged child, retaining its full output off the UI pipe."""
+    log_path = None
+    try:
+        # Private, unique log survives closing the app (temporary storage may be
+        # cleared on reboot). Do not buffer a whole rsync transcript in memory.
+        with tempfile.NamedTemporaryFile(prefix="easy-ufs-install-", suffix=".log",
+                                         delete=False) as log:
+            log_path = log.name
+            proc = _pkexec(argv, output=log)
+            log.seek(0, os.SEEK_END)
+            log.seek(max(0, log.tell() - 8000))
+            out = log.read().decode("utf-8", errors="replace").strip()
+        return proc.returncode, f"{out}\nFull log: {log_path}"
+    except Exception as exc:  # launch/log errors must release the progress UI
+        detail = f"Installer could not complete: {exc}"
+        if log_path:
+            detail += f"\nFull log: {log_path}"
+        return None, detail
 
 
 def probe_sizes() -> dict[str, str]:
@@ -83,6 +111,8 @@ class MainWindow(Gtk.Window):
         self.set_default_size(640, 720)
         self.set_border_width(14)
         self._busy = False
+        # No closing halfway through an install (including authentication).
+        self.connect("delete-event", lambda *_a: self._busy)
         self._info: dict[str, str] = {}
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -262,7 +292,12 @@ class MainWindow(Gtk.Window):
 
             GLib.idle_add(done)
 
-        threading.Thread(target=worker, daemon=True).start()
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except RuntimeError as exc:
+            self._busy = False
+            self.refresh_btn.set_sensitive(True)
+            self.status.set_text(f"Probe could not start: {exc}")
 
     def _on_install(self, *_args) -> None:
         if self._busy:
@@ -294,6 +329,7 @@ class MainWindow(Gtk.Window):
         if response != Gtk.ResponseType.OK:
             return
 
+        progress = self._progress_dialog()
         self._busy = True
         self.install_btn.set_sensitive(False)
         self.status.set_text(f"Installing with --android-gb {android_gb} (this takes a while)…")
@@ -303,27 +339,61 @@ class MainWindow(Gtk.Window):
         # The table is about to change: the next install needs a fresh probe.
         self._info = {}
 
-        def worker() -> None:
-            proc = _pkexec(["bash", str(script), "--force", "--android-gb", str(android_gb),
-                            "--expect", fingerprint, "--home", home_mode])
-            out = ((proc.stdout or "") + (proc.stderr or "")).strip()
-
-            def done() -> None:
-                self._busy = False
-                self.install_btn.set_sensitive(False)
-                if out:
-                    self._append(out[-8000:])
-                if proc.returncode == 0:
-                    if TABLET:
-                        self.status.set_text("Install finished. Power off, unplug the USB drive, then power on.")
-                    else:
-                        self.status.set_text("Install finished. Power off, remove the SD card, then in the ABL menu set Boot source to Internal and boot Linux.")
+        def done(code: int | None, out: str) -> None:
+            GLib.source_remove(progress.pulse_id)
+            progress.destroy()
+            self._busy = False
+            self.install_btn.set_sensitive(False)
+            if out:
+                self._append(out)
+            if code == 0:
+                if TABLET:
+                    self.status.set_text("Install finished. Power off, unplug the USB drive, then power on.")
                 else:
-                    self.status.set_text(f"Install failed (exit {proc.returncode}). See log.")
+                    self.status.set_text("Install finished. Power off, remove the SD card, then in the ABL menu set Boot source to Internal and boot Linux.")
+            elif code is None:
+                self.status.set_text("Install could not complete. See log; do not assume internal storage is ready.")
+            else:
+                self.status.set_text(f"Install failed (exit {code}). See log.")
 
-            GLib.idle_add(done)
+        def worker() -> None:
+            code, out = run_install([
+                "bash", str(script), "--force", "--android-gb", str(android_gb),
+                "--expect", fingerprint, "--home", home_mode,
+            ])
+            GLib.idle_add(done, code, out)
 
-        threading.Thread(target=worker, daemon=True).start()
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except RuntimeError as exc:
+            done(None, f"Could not start installer worker: {exc}")
+
+
+    def _progress_dialog(self) -> Gtk.Dialog:
+        """A window over everything until the install ends. A line in the
+        status label was easy to miss on a small screen, and people closed the
+        installer or restarted halfway, leaving internal storage half done."""
+        dialog = Gtk.Dialog(title="Installing SteamOS", transient_for=self, modal=True)
+        dialog.set_deletable(False)
+        dialog.connect("delete-event", lambda *_a: True)
+        box = dialog.get_content_area()
+        box.set_spacing(12)
+        box.set_border_width(18)
+        label = Gtk.Label()
+        label.set_markup(
+            "<span size='large'><b>Installing SteamOS to internal storage</b></span>\n\n"
+            "Authorization and installation may take several minutes.\n"
+            "Copying games can take longer.\n"
+            "Don't close this window, restart or\n"
+            "turn the device off until it says the install has finished.")
+        label.set_line_wrap(True)
+        label.set_max_width_chars(48)
+        box.pack_start(label, False, False, 0)
+        bar = Gtk.ProgressBar()
+        box.pack_start(bar, False, False, 0)
+        dialog.pulse_id = GLib.timeout_add(150, lambda: (bar.pulse(), True)[1])
+        dialog.show_all()
+        return dialog
 
 
 def main() -> int:

@@ -243,11 +243,30 @@ fi
 # --------------------------------------------------------------- execute ---
 mounted=()
 cleanup() {
-  local i
-  for (( i=${#mounted[@]}-1; i>=0; i-- )); do umount "${mounted[i]}" 2>/dev/null || true; done
+  local i rc=0
+  local remaining=()
+  for (( i=${#mounted[@]}-1; i>=0; i-- )); do
+    if ! umount "${mounted[i]}"; then
+      printf '[ufs] ERROR: could not unmount %s; installation is not complete.\n' "${mounted[i]}" >&2
+      if (( ${#remaining[@]} )); then
+        remaining=("${mounted[i]}" "${remaining[@]}")
+      else
+        remaining=("${mounted[i]}")
+      fi
+      rc=1
+    fi
+  done
   mounted=()
+  if (( ${#remaining[@]} )); then mounted=("${remaining[@]}"); fi
+  return "$rc"
 }
-trap cleanup EXIT
+finish() {
+  local rc=$?
+  trap - EXIT
+  cleanup || { (( rc != 0 )) || rc=1; }
+  exit "$rc"
+}
+trap finish EXIT
 mnt() { mkdir -p "$2"; mount "${@:3}" "$1" "$2"; mounted+=("$2"); }
 
 # The boot partition the tablet starts from: Qualcomm A/B keeps the active
