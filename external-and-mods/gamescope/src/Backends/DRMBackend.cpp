@@ -1166,30 +1166,23 @@ static uint32_t connector_mode_area( gamescope::CDRMConnector *pConnector )
 	return uint32_t( pModeConnector->modes[0].hdisplay ) * uint32_t( pModeConnector->modes[0].vdisplay );
 }
 
-static bool drm_skip_external_connectors( struct drm_t *drm )
+// External screens are allowed by default. Neither legacy ALLOW variable may
+// override --force-internal, GAMESCOPE_FORCE_INTERNAL or Steam's internal switch.
+static bool drm_skip_external_connectors()
 {
-	if ( env_to_bool( getenv( "GAMESCOPE_ALLOW_HDMI" ) ) || env_to_bool( getenv( "GAMESCOPE_ALLOW_EXTERNAL" ) ) )
-		return false;
-	if ( g_bForceInternal )
-		return true;
-	for ( auto &iter : drm->connectors )
-	{
-		gamescope::CDRMConnector *pConnector = &iter.second;
-		if ( pConnector->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_INTERNAL &&
-			 pConnector->GetModeConnector()->connection == DRM_MODE_CONNECTED )
-			return true;
-	}
-	return false;
+	return g_bForceInternal;
 }
 
 static bool connector_better_than( struct drm_t *drm, gamescope::CDRMConnector *pCandidate, gamescope::CDRMConnector *pBest )
 {
+	// setup_best_connector filters unusable outputs before ranking them. A
+	// monitor beats the panel even though the session prefers the panel's name.
+	if ( pCandidate->GetScreenType() != pBest->GetScreenType() )
+		return pCandidate->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_EXTERNAL;
 	const int nCandidatePriority = get_connector_priority( drm, pCandidate->GetName() );
 	const int nBestPriority = get_connector_priority( drm, pBest->GetName() );
 	if ( nCandidatePriority != nBestPriority )
 		return nCandidatePriority < nBestPriority;
-	if ( pCandidate->GetScreenType() != pBest->GetScreenType() )
-		return pCandidate->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_INTERNAL;
 	return connector_mode_area( pCandidate ) > connector_mode_area( pBest );
 }
 
@@ -1458,7 +1451,7 @@ static bool setup_best_connector(struct drm_t *drm, bool force, bool initial)
 	}
 
 	gamescope::CDRMConnector *best = nullptr;
-	const bool bSkipExternal = drm_skip_external_connectors( drm );
+	const bool bSkipExternal = drm_skip_external_connectors();
 	for ( auto &iter : drm->connectors )
 	{
 		gamescope::CDRMConnector *pConnector = &iter.second;
@@ -1468,9 +1461,23 @@ static bool setup_best_connector(struct drm_t *drm, bool force, bool initial)
 
 		if ( bSkipExternal && pConnector->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_EXTERNAL )
 		{
-			drm_log.infof( "skipping external connector '%s' (force internal / DSI present)", pConnector->GetName() );
+			drm_log.infof( "skipping external connector '%s' (force internal)", pConnector->GetName() );
 			continue;
 		}
+
+		// A connected dock may have no modes, only blocklisted modes, or no
+		// available CRTC/primary plane (for example while another output is leased).
+		// Filter before ranking: otherwise an unusable preferred external can
+		// hide a usable monitor, or take the panel and fail after changing state.
+		if ( !find_mode( pConnector->GetModeConnector(), 0, 0, 0 ) )
+			continue;
+		gamescope::CDRMCRTC *pCRTC = find_crtc_for_connector( drm, pConnector );
+		if ( !pCRTC || !std::any_of( drm->planes.begin(), drm->planes.end(),
+			[pCRTC]( const std::unique_ptr<gamescope::CDRMPlane> &pPlane ) {
+				return ( pPlane->GetModePlane()->possible_crtcs & pCRTC->GetCRTCMask() ) &&
+					pPlane->GetProperties().type->GetCurrentValue() == DRM_PLANE_TYPE_PRIMARY;
+			} ) )
+			continue;
 
 		if ( !best || connector_better_than( drm, pConnector, best ) )
 			best = pConnector;
@@ -1487,7 +1494,7 @@ static bool setup_best_connector(struct drm_t *drm, bool force, bool initial)
 	}
 
 	if (!force) {
-		if ((!best && drm->pConnector) || (best && best == drm->pConnector)) {
+		if (best && best == drm->pConnector) {
 			// Let's keep our current connector
 			return true;
 		}

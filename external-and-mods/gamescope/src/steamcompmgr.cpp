@@ -883,7 +883,11 @@ update_color_mgmt()
 		g_bOutputHDREnabled, g_bAppWantsHDRCached,
 		GetBackend()->GetCurrentConnector()->GetHDRInfo().IsHDRG22() );
 
-	g_ColorMgmt.pending.flSoftwareBacklightGain = gamescope::GetSoftwareBacklightGain();
+	// A failed handheld backlight uses shader dimming only on the panel.
+	// Carrying that fallback onto a docked monitor would dim its output too.
+	g_ColorMgmt.pending.flSoftwareBacklightGain =
+		GetBackend()->GetCurrentConnector()->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_INTERNAL
+			? gamescope::GetSoftwareBacklightGain() : 1.0f;
 
 	GetBackend()->GetCurrentConnector()->GetNativeColorimetry(
 		g_bOutputHDREnabled,
