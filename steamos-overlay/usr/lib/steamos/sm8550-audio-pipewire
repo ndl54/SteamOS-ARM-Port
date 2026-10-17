@@ -6,6 +6,12 @@
 set +e
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 
+# TB321FU's own UCM handles its AW882xx speakers and WCD939x capture.
+# The generic Odin policy would force pro-audio and undo that routing.
+if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,tb321fu'; then
+  exit 0
+fi
+
 # SM8650 (KONKR Pocket FIT / AYANEO Pocket S2) uses UCM HiFi via WirePlumber
 # (53-konkr-audio.conf). The pro-audio + MI2S policy below is Odin 2 only and
 # breaks the SM8650-APS2 DSP graph. The REDMAGIC 6 (SM8350) also has its own
