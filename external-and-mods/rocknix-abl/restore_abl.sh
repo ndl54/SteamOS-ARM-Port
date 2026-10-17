@@ -1,17 +1,16 @@
 
-# ---- restore_abl.sh: put the backed-up ABL back on each slot ----
-need_root
-[ -s "$HERE/abl_a.img" ] && [ -s "$HERE/abl_b.img" ] || fail "no backup here (abl_a.img, abl_b.img)"
-ok=1
-for s in a b; do
-  img=$HERE/abl_$s.img
-  part=/dev/block/by-name/abl_$s
-  size=$(wc -c < "$img" | tr -d ' ')
-  dd if="$img" of="$part" bs=4096 conv=fsync 2>/dev/null && sync
-  if [ "$(part_sha "$part" "$size")" = "$(sha_of "$img")" ]; then
-    say "abl_$s restored"
-  else
-    say "abl_$s did NOT read back the same, run this script again"; ok=0
-  fi
+# Restore this device's saved ABL to its original slots.
+# The stager inlines abl-safety.sh above this body in the shipped script.
+preflight
+check_backups
+# Snapshot and validate both files before touching either slot.
+for slot in a b; do
+  cp "$D/abl_$slot.img" "$WORK/abl_$slot.img" || fail "cannot copy backup $slot"
+  IFS= read -r expected < "$D/abl_$slot.img.sha256" || fail "cannot read checksum $slot"
+  actual=$(sha_of "$WORK/abl_$slot.img") || fail "cannot hash restore image $slot"
+  [ "$actual" = "$expected" ] || fail "backup $slot changed during copy"
 done
-[ "$ok" = 1 ] && say "Done. Your previous ABL is back on both slots." || exit 1
+write_slot "$WORK/abl_a.img" "$A"
+write_slot "$WORK/abl_b.img" "$B"
+finish
+echo "Done. Your previous ABL is back on both slots; both readbacks verified."

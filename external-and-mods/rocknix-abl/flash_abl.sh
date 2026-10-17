@@ -1,19 +1,15 @@
 
-# ---- flash_abl.sh: put ROCKNIX ABL @VERSION@ on both slots ----
-need_root
-check_chip
-check_elf
-say "Device: $(getprop ro.product.model) ($SOC)"
+# Put ROCKNIX ABL @VERSION@ (@SOC@) on both ABL slots.
+# The stager inlines abl-safety.sh above this body in the shipped script.
+preflight
+cp "$D/abl_signed-@SOC@.elf" "$WORK/new.elf" || fail "missing or unreadable ABL image"
+actual=$(sha_of "$WORK/new.elf") || fail "cannot hash ABL image"
+[ "$actual" = "@SHA256@" ] || fail "ABL image differs from the pinned release; copy the folder again"
+size=$(file_size "$WORK/new.elf") || fail "cannot size ABL image"
+positive_size "$size" && [ "$size" -le "$size_a" ] && [ "$size" -le "$size_b" ] || fail "ABL image does not fit both slots"
 backup
-say "Writing ROCKNIX ABL @VERSION@ to abl_a and abl_b..."
-if write_both "$ELF"; then
-  say
-  say "Done. ROCKNIX ABL @VERSION@ is on both slots."
-  say "Restart holding Volume Down for the ABL menu: set your device model,"
-  say "pick Linux as the boot mode, then Start."
-else
-  say
-  say "The new ABL did not write cleanly. Do NOT restart yet:"
-  say "run restore_abl.sh from this folder first to put your old ABL back."
-  exit 1
-fi
+write_slot "$WORK/new.elf" "$A"
+write_slot "$WORK/new.elf" "$B"
+finish
+echo "Done. Both slots verified. Copy abl_a.img, abl_b.img and both .sha256 files to a PC."
+echo "Restart holding Volume Down: set your device model, choose Linux, Start."
