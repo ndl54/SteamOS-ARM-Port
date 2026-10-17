@@ -256,6 +256,16 @@ Type=none
 Options=bind
 UNIT
 done
+# Never let systemd-repart add partitions to internal UFS. Deck EFI and
+# A/B boot units also have no role in the tablet userdata layout. Override
+# both /etc layers even when converting older chip images without masks.
+for etc in "$U/etc" "$U/var/lib/overlays/etc/upper"; do
+  [[ -d "$etc" ]] || continue
+  mkdir -p "$etc/systemd/system"
+  for u in systemd-repart.service efi.mount esp.mount steamos-boot.service; do
+    ln -sfn /dev/null "$etc/systemd/system/$u"
+  done
+done
 # /home is already the whole partition: the microSD image's first-boot grow
 # of its home partition must not run.
 mkdir -p "$U/var/lib/steamos-sm8550"; touch "$U/var/lib/steamos-sm8550/home-expanded"
