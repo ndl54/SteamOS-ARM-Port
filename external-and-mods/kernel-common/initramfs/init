@@ -152,7 +152,23 @@ snap() {
   sync
 }
 
-if [ -n "$bootdev" ] && mount -t vfat "$bootdev" /boot; then
+# A 512-byte-sector FAT on a 4K-sector disk (the Lenovo Gen 3's super on UFS)
+# needs a loop device. BusyBox mount ignores -o loop for block devices, so
+# attach it explicitly after trying the normal SD/ROCKNIX mount first.
+mount_boot() {
+  mount -t vfat "$bootdev" /boot 2>/dev/null && return 0
+  bootloop=$(losetup -f) || return 1
+  losetup "$bootloop" "$bootdev" || return 1
+  if mount -t vfat "$bootloop" /boot; then
+    # On our kernels, detaching a mounted loop marks it for autoclear when
+    # the last mount closes, including the live logger's retained mount.
+    losetup -d "$bootloop" || echo "could not mark $bootloop for autoclear" >&2
+    return 0
+  fi
+  losetup -d "$bootloop"
+  return 1
+}
+if [ -n "$bootdev" ] && mount_boot; then
   logdir=/boot
   [ -e /boot/debug ] || [ -e /boot/debug.txt ] && debug=1
   n=0

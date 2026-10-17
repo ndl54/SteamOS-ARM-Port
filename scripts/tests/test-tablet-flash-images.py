@@ -9,6 +9,8 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = (REPO / 'scripts/mk-tablet-flash-images.sh').read_text()
+INIT = (REPO / 'external-and-mods/kernel-common/initramfs/init').read_text()
+WRAPPER = (REPO / 'scripts/build-tb321fu-kernel-726.sh').read_text()
 CLEANUP = SCRIPT[SCRIPT.index('cleanup() {'):SCRIPT.index('trap cleanup EXIT')]
 
 
@@ -68,6 +70,101 @@ rm() { printf 'rm %s\n' "$*" >> "$CALLS"; }
 
 
 class BootConfiguration(unittest.TestCase):
+    def test_boot_mount_loop_fallback_and_failure_cleanup(self):
+        start = INIT.index('mount_boot() {')
+        function = INIT[start:INIT.index('\nif [ -n "$bootdev" ]', start)]
+        for direct, free, attach, loop, expected in (
+            (0, 0, 0, 0, ['mount -t vfat /mock/super /boot']),
+            (1, 0, 0, 0, ['mount -t vfat /mock/super /boot', 'loop -f',
+                         'loop /mock/loop /mock/super', 'mount -t vfat /mock/loop /boot',
+                         'loop -d /mock/loop']),
+            (1, 1, 0, 0, ['mount -t vfat /mock/super /boot', 'loop -f']),
+            (1, 0, 1, 0, ['mount -t vfat /mock/super /boot', 'loop -f',
+                         'loop /mock/loop /mock/super']),
+            (1, 0, 0, 1, ['mount -t vfat /mock/super /boot', 'loop -f',
+                         'loop /mock/loop /mock/super', 'mount -t vfat /mock/loop /boot',
+                         'loop -d /mock/loop']),
+        ):
+            with self.subTest(direct=direct, free=free, attach=attach, loop=loop), tempfile.TemporaryDirectory() as temp:
+                calls = Path(temp) / 'calls'
+                shell = '''
+mount() {
+  echo "mount $*" >> "$CALLS"
+  case "$*" in *'/mock/super'*) return "$DIRECT";; *) return "$LOOP";; esac
+}
+losetup() {
+  echo "loop $*" >> "$CALLS"
+  case "$1" in
+    -f) echo /mock/loop; return "$FREE";;
+    -d) return 0;;
+    *) return "$ATTACH";;
+  esac
+}
+'''
+                result = subprocess.run(['sh', '-c', shell + function + '\nmount_boot\n'],
+                    env={**os.environ, 'bootdev': '/mock/super', 'CALLS': str(calls),
+                         'DIRECT': str(direct), 'FREE': str(free), 'ATTACH': str(attach), 'LOOP': str(loop)},
+                    capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0 if direct == 0 else int(bool(free or attach or loop)), result.stderr)
+                self.assertEqual(calls.read_text().splitlines(), expected)
+
+    def test_userdata_mount_configuration_in_both_etc_layers(self):
+        fragment = SCRIPT[SCRIPT.index("FSTAB='"):SCRIPT.index('# /home is already')]
+        for device in ('tb321fu', 'elden'):
+            for upper in (False, True):
+                with self.subTest(device=device, upper=upper), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    layers = [root / 'etc']
+                    if upper:
+                        layers.append(root / 'var/lib/overlays/etc/upper')
+                    for etc in layers:
+                        unit = etc / 'systemd/system/home.mount'
+                        unit.parent.mkdir(parents=True)
+                        unit.write_text('[Mount]\nWhat=/dev/disk/by-partsets/shared/home\n')
+                    # Also exercise replacing a mask without following it.
+                    (layers[0] / 'systemd/system/home.mount').unlink()
+                    (layers[0] / 'systemd/system/home.mount').symlink_to('/dev/null')
+                    subprocess.run(['bash', '-eu', '-c', fragment], check=True,
+                                   env={**os.environ, 'DEV': device, 'U': temp})
+                    for etc in layers:
+                        unit = etc / 'systemd/system/home.mount'
+                        self.assertFalse(unit.is_symlink())
+                        config = unit.read_text()
+                        for line in ('What=/home', 'Where=/home', 'Type=none', 'Options=bind'):
+                            self.assertIn(line, config.splitlines())
+                        self.assertNotIn('by-partsets', config)
+                        rows = [line.split() for line in (etc / 'fstab').read_text().splitlines()
+                                if line and not line.startswith('#')]
+                        self.assertEqual(rows[0][0:3], ['PARTLABEL=userdata', '/', 'ext4'])
+                        self.assertFalse(any(row[1] == '/home' for row in rows))
+                        boot = [row for row in rows if row[1] == '/boot']
+                        self.assertEqual(len(boot), int(device == 'tb321fu'))
+                        if boot:
+                            self.assertEqual(boot[0][0], '/dev/disk/by-partlabel/super')
+                            self.assertIn('loop', boot[0][3].split(','))
+                            self.assertEqual(boot[0][-2:], ['0', '0'])
+                    if not upper:
+                        self.assertFalse((root / 'var/lib/overlays/etc/upper').exists())
+
+    def test_fast_requires_prepared_tree_and_normalizes_zero(self):
+        fragment = WRAPPER[WRAPPER.index('die() {'):WRAPPER.index('mkdir -p "$W/cache"')]
+        for fast, prepared, valid in (('0', False, True), ('', False, True),
+                                      ('1', False, False), ('1', True, True), ('bad', True, False)):
+            with self.subTest(fast=fast, prepared=prepared), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                cpio = root / 'initrd.cpio'
+                cpio.write_text('fixture only')
+                if prepared:
+                    config = root / 'cache/build/linux-7.2.6/.config'
+                    config.parent.mkdir(parents=True)
+                    config.write_text('CONFIG_ARM64=y\n')
+                result = subprocess.run(['bash', '-eu', '-c', fragment + '\nprintf "FAST=%s" "$FAST"'],
+                    env={**os.environ, 'FAST': fast, 'W': temp, 'CPIO': str(cpio)},
+                    capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+                if valid:
+                    self.assertEqual(result.stdout, 'FAST=' + ('1' if fast == '1' else ''))
+
     def stage_first_config(self, esp):
         (esp / 'EFI/BOOT/grub.cfg').write_text('obsolete first-stage config\n')
         stage = (REPO / 'scripts/stage-tb321fu-boot.sh').read_text()

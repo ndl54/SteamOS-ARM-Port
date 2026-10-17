@@ -11,7 +11,8 @@
 #
 # OUT_DIR gets the layout mk-tablet-flash-images.sh takes as KERNEL_OUT:
 # boot/Image, dtbs/sm8650-lenovo-tb321fu-{boe,csot}.dtb, modules/<kver>/,
-# config-<kver>. Runs as root in the build VM (docker, fedora:43).
+# config-<kver>. Runs as root in the build VM (docker, fedora:43). FAST=1
+# reuses a prepared build tree from this pinned recipe and re-merges config.
 set -euo pipefail
 OUT="${1:?output dir}"; CPIO="$(readlink -f "${2:?initrd.cpio}")"
 SRC_COMMIT=1cfa907237d190c03db9392cd858de2208eb7892
@@ -19,6 +20,16 @@ SRC_URL="https://codeload.github.com/enij90/armada-tb321fu/tar.gz/${SRC_COMMIT}"
 W="${WORK:-/work/kernel-tb321fu-726}"
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ -s "$CPIO" ]] || die "no $CPIO"
+# The pinned builder treats any nonempty FAST as true, and skips patches
+# even when it has just extracted a missing tree. Reject that unsafe case.
+case "${FAST:-0}" in
+  0) FAST="" ;;
+  1) FAST=1 ;;
+  *) die "FAST must be 0 or 1" ;;
+esac
+if [[ $FAST == 1 ]]; then
+  [[ -s "$W/cache/build/linux-7.2.6/.config" ]] || die "FAST=1 needs a prepared tree; run with FAST=0 first"
+fi
 mkdir -p "$W/cache" "$W/out"
 rm -rf "$W/pkg" "$W/out"/*
 
@@ -48,6 +59,7 @@ CONFIG_INITRAMFS_SOURCE="/src/initrd.cpio"
 CONFIG_INITRAMFS_COMPRESSION_NONE=y
 # /etc must be mounted before systemd starts; our initramfs has no modules.
 CONFIG_OVERLAY_FS=y
+CONFIG_BLK_DEV_LOOP=y
 CONFIG_LOCALVERSION="-tb321fu"
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_FONTS=y
@@ -55,7 +67,7 @@ CONFIG_FONT_TER16x32=y
 EOF
 
 docker run --rm -v "$P:/src" -v "$W/out:/work/out" -v "$W/cache:/cache" -w /src \
-  -e KBUILD_BUILD_USER=steamos -e KBUILD_BUILD_HOST=builder \
+  -e KBUILD_BUILD_USER=steamos -e KBUILD_BUILD_HOST=builder -e FAST="${FAST:-}" \
   fedora:43 bash -c '
     set -e
     dnf -q -y install gcc binutils make bc bison flex openssl-devel elfutils-libelf-devel \

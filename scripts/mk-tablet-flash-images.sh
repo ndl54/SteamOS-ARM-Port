@@ -229,10 +229,33 @@ fi
 FSTAB='# Lenovo Legion Y700: system and /home on userdata
 PARTLABEL=userdata  /      ext4  defaults,noatime,x-systemd.growfs  0 1
 '
-[[ $DEV == tb321fu ]] && FSTAB+='PARTLABEL=super     /boot  vfat  defaults,umask=0077,nofail          0 2
+# super is a 512-byte-sector FAT on 4K-sector UFS: Linux mounts it only
+# through a loop device.
+[[ $DEV == tb321fu ]] && FSTAB+='/dev/disk/by-partlabel/super  /boot  vfat  loop,defaults,umask=0077,nofail  0 0
 '
 printf '%s' "$FSTAB" > "$U/etc/fstab"
 [[ -d "$U/var/lib/overlays/etc/upper" ]] && printf '%s' "$FSTAB" > "$U/var/lib/overlays/etc/upper/fstab"
+# /home is on userdata. Replace the Deck partition mount with a self-bind,
+# as on REDMAGIC 6, so units requiring home.mount can still start. Write
+# both /etc layers: an existing upper unit would hide a lower-only change.
+for etc in "$U/etc" "$U/var/lib/overlays/etc/upper"; do
+  [[ -d "$etc" ]] || continue
+  mkdir -p "$etc/systemd/system"
+  rm -f "$etc/systemd/system/home.mount"
+  cat > "$etc/systemd/system/home.mount" <<'UNIT'
+[Unit]
+Description=Home Directory (on the root partition)
+DefaultDependencies=no
+Conflicts=umount.target
+Before=local-fs.target umount.target
+
+[Mount]
+What=/home
+Where=/home
+Type=none
+Options=bind
+UNIT
+done
 # /home is already the whole partition: the microSD image's first-boot grow
 # of its home partition must not run.
 mkdir -p "$U/var/lib/steamos-sm8550"; touch "$U/var/lib/steamos-sm8550/home-expanded"
