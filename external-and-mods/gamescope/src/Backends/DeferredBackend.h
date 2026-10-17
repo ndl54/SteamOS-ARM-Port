@@ -167,6 +167,11 @@ namespace gamescope
 		{
             return true;
 		}
+		virtual bool RequiresLinearScanout() const override
+		{
+            return m_pChild->RequiresLinearScanout();
+		}
+
 		virtual std::span<const uint64_t> GetSupportedModifiers( uint32_t uDrmFormat ) const override
 		{
 			return GetSupportedSampleModifiers( uDrmFormat );

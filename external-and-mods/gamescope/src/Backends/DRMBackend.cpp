@@ -2185,6 +2185,13 @@ bool init_drm(struct drm_t *drm, int width, int height, int refresh)
 	if (drmGetCap(drm->fd, DRM_CAP_ADDFB2_MODIFIERS, &cap) == 0 && cap != 0) {
 		drm->allow_modifiers = true;
 	}
+	// SteamOS-ARM: use implicit KMS imports and request linear compositor
+	// buffers through RequiresLinearScanout for drivers with broken modifiers.
+	if ( drm->allow_modifiers && env_to_bool( getenv( "GAMESCOPE_DISABLE_MODIFIERS" ) ) )
+	{
+		drm_log.infof( "GAMESCOPE_DISABLE_MODIFIERS: implicit KMS imports, linear compositor buffers" );
+		drm->allow_modifiers = false;
+	}
 
 	g_bSupportsAsyncFlips = drmGetCap(drm->fd, DRM_CAP_ATOMIC_ASYNC_PAGE_FLIP, &cap) == 0 && cap != 0;
 	if (!g_bSupportsAsyncFlips)
@@ -2275,7 +2282,18 @@ bool init_drm(struct drm_t *drm, int width, int height, int refresh)
 	// 2. When compositing HDR content as a fallback when we undock, it avoids introducing
 	// a bunch of horrible banding when going to G2.2 curve.
 	// It ensures that we can dither that.
-	g_nDRMFormat = pick_plane_format(&drm->primary_formats, DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010);
+	// SteamOS-ARM: GAMESCOPE_PREFER_8BIT scans out 8 bpc like a desktop
+	// compositor, for display drivers whose 10-bit scanout stays black.
+	g_nDRMFormat = DRM_FORMAT_INVALID;
+	if ( env_to_bool( getenv( "GAMESCOPE_PREFER_8BIT" ) ) ) {
+		g_nDRMFormat = pick_plane_format(&drm->primary_formats, DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888);
+		if ( g_nDRMFormat != DRM_FORMAT_INVALID )
+			drm_log.infof( "GAMESCOPE_PREFER_8BIT: 8 bpc composition buffer" );
+		else
+			drm_log.infof( "GAMESCOPE_PREFER_8BIT: 8 bpc unavailable, falling back to default formats" );
+	}
+	if ( g_nDRMFormat == DRM_FORMAT_INVALID )
+		g_nDRMFormat = pick_plane_format(&drm->primary_formats, DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010);
 	if ( g_nDRMFormat == DRM_FORMAT_INVALID ) {
 		g_nDRMFormat = pick_plane_format(&drm->primary_formats, DRM_FORMAT_XBGR2101010, DRM_FORMAT_ABGR2101010);
 		if ( g_nDRMFormat == DRM_FORMAT_INVALID ) {
@@ -2289,7 +2307,11 @@ bool init_drm(struct drm_t *drm, int width, int height, int refresh)
 
 	if (have_overlay_planes(drm)) {
 		// ARGB8888 is the Xformat and AFormat here in this function as we want transparent overlay
-		g_nDRMFormatOverlay = pick_plane_format(&drm->formats, DRM_FORMAT_ARGB2101010, DRM_FORMAT_ARGB2101010);
+		g_nDRMFormatOverlay = DRM_FORMAT_INVALID;
+		if ( env_to_bool( getenv( "GAMESCOPE_PREFER_8BIT" ) ) )
+			g_nDRMFormatOverlay = pick_plane_format(&drm->formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_ARGB8888);
+		if ( g_nDRMFormatOverlay == DRM_FORMAT_INVALID )
+			g_nDRMFormatOverlay = pick_plane_format(&drm->formats, DRM_FORMAT_ARGB2101010, DRM_FORMAT_ARGB2101010);
 		if ( g_nDRMFormatOverlay == DRM_FORMAT_INVALID ) {
 			g_nDRMFormatOverlay = pick_plane_format(&drm->formats, DRM_FORMAT_ABGR2101010, DRM_FORMAT_ABGR2101010);
 			if ( g_nDRMFormatOverlay == DRM_FORMAT_INVALID ) {
@@ -5291,6 +5313,10 @@ namespace gamescope
 		virtual bool UsesModifiers() const override
 		{
 			return g_DRM.allow_modifiers;
+		}
+		virtual bool RequiresLinearScanout() const override
+		{
+			return env_to_bool( getenv( "GAMESCOPE_DISABLE_MODIFIERS" ) );
 		}
 		virtual std::span<const uint64_t> GetSupportedModifiers( uint32_t uDrmFormat ) const override
 		{

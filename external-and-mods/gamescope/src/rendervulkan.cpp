@@ -2088,6 +2088,10 @@ bool CVulkanTexture::BInit( uint32_t width, uint32_t height, uint32_t depth, uin
 	m_drmFormat = drmFormat;
 	VkResult res = VK_ERROR_INITIALIZATION_FAILED;
 
+	// Disabling explicit KMS modifiers alone does not make optimal images linear.
+	// Preserve imported client layouts; only our own scanout allocations opt in.
+	if ( flags.bFlippable && !pDMA && GetBackend()->RequiresLinearScanout() )
+		flags.bLinear = true;
 	VkImageTiling tiling = (flags.bMappable || flags.bLinear) ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
 	VkImageUsageFlags usage = 0;
 	VkMemoryPropertyFlags properties;
@@ -2221,7 +2225,7 @@ bool CVulkanTexture::BInit( uint32_t width, uint32_t height, uint32_t depth, uin
 
 	std::vector<uint64_t> modifiers = {};
 	// TODO(JoshA): Move this code to backend for making flippable image.
-	if ( GetBackend()->UsesModifiers() && flags.bFlippable && g_device.supportsModifiers() && !pDMA )
+	if ( GetBackend()->UsesModifiers() && !GetBackend()->RequiresLinearScanout() && flags.bFlippable && g_device.supportsModifiers() && !pDMA )
 	{
 		assert( drmFormat != DRM_FORMAT_INVALID );
 
@@ -4635,6 +4639,9 @@ bool vulkan_format_supports_features(VkFormat format, VkFormatFeatureFlags featu
 	};
 
 	g_device.vk.GetPhysicalDeviceFormatProperties2( g_device.physDev(), format, &formatProps );
+
+	if ( GetBackend()->RequiresLinearScanout() )
+		return ( formatProps.formatProperties.linearTilingFeatures & features ) == features;
 
 	// Without modifiers, flippable images are created with optimal tiling
 	if ( !g_device.supportsModifiers() )
