@@ -184,7 +184,9 @@ persist() {
 }
 
 # The card's own HiFi profile without DisplayPort/HDMI (the device's local
-# outputs), for UCM_ONLY devices.
+# outputs), for UCM_ONLY devices. Prefer speakers if a card exposes separate
+# speaker and headphone profiles; a headphone profile can still list as
+# available with nothing in the jack. TB321FU exits above and uses WirePlumber.
 local_profile() {
   pactl_ok list cards | awk -v c="$1" '
     /^Card #/ {incard=0}
@@ -192,7 +194,10 @@ local_profile() {
     incard && /^\tProfiles:/ {inprof=1; next}
     incard && inprof && /^\t[A-Z]/ {inprof=0}
     incard && inprof && /HiFi/ && !/(DisplayPort|HDMI)/ && !/available: no/ {
-      sub(/^\t+/, ""); sub(/: .*/, ""); print; exit }'
+      sub(/^\t+/, ""); sub(/: .*/, "")
+      if ($0 ~ /Speaker/) { print; found=1; exit }
+      if (first == "") first = $0 }
+    END { if (!found && first != "") print first }'
 }
 
 apply_policy() {
