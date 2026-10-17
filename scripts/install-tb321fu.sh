@@ -106,6 +106,58 @@ if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx
 fi
 ENV
 
+# Touch and pen report the panel's native portrait coordinates. gamescope only
+# rotates touch for I2C (internal) or USB (external) devices and these are on
+# SPI, so it maps them unrotated: taps land in the wrong place in Game Mode.
+# Rotate them in libinput (the matrix for DT rotation 90, "right-up").
+install -Dm0644 /dev/stdin "$R/usr/lib/udev/rules.d/90-steamos-arm-tb321fu-touch.rules" <<'RULES'
+# Lenovo Legion Y700 Gen 3: the touch panel reports portrait coordinates, the session runs landscape.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="NVTCapacitiveTouchScreen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="NVTCapacitivePen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+RULES
+# KWin already maps touch to the rotated output, so Desktop Mode replaces
+# the udev calibration with identity before applying its own output rotation.
+# Merge the two exact groups independently: a name in a comment or an existing
+# touch group must not suppress the pen group or a missing CalibrationMatrix.
+# An existing persistent /etc upper can hide the base file, so update both.
+for etc in "$R/etc" "$R/var/lib/overlays/etc/upper"; do
+  [[ "$etc" == "$R/etc" || -d "$etc" ]] || continue
+  mkdir -p "$etc/xdg"
+  cfg="$etc/xdg/kcminputrc"
+  touch "$cfg"
+  awk '
+    BEGIN {
+      group[1] = "[Libinput][0][0][NVTCapacitiveTouchScreen]"
+      group[2] = "[Libinput][0][0][NVTCapacitivePen]"
+      identity = "CalibrationMatrix=1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
+    }
+    /^[ \t]*\[/ {
+      header = $0
+      sub(/^[ \t]*/, "", header)
+      sub(/[ \t]*$/, "", header)
+      target = (header == group[1] || header == group[2])
+      if (target) {
+        seen[header] = 1
+        print
+        print identity
+        next
+      }
+    }
+    target && /^[ \t]*CalibrationMatrix[ \t]*=/ { next }
+    { print }
+    END {
+      for (i = 1; i <= 2; i++) {
+        if (!seen[group[i]]) {
+          print ""
+          print group[i]
+          print identity
+        }
+      }
+    }
+  ' "$cfg" > "$W/kcminputrc"
+  cat "$W/kcminputrc" > "$cfg"
+done
+
 # The Adreno 750's GMU fails to come back from runtime suspend on this tablet
 # (Armada TB321FU notes): keep it powered until that is understood.
 install -Dm0644 /dev/stdin "$R/usr/lib/systemd/system/steamos-arm-tb321fu-gpu-on.service" <<'UNIT'
