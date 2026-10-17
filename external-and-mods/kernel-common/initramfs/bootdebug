@@ -82,7 +82,8 @@ fi
 
 # Upload is separate from selecting Desktop Mode: both exact tokens are
 # required. steamos.logupload=1 consents to sending unredacted system/user
-# journals and Steam logs (which may contain personal data) to gofile.io.
+# journals, Steam logs and current PipeWire state (which may contain personal
+# data) to gofile.io.
 # No debug/debug.txt file, debug flag or Desktop selection alone sends data.
 upload_pid=
 if grep -qE '(^|[[:space:]])steamos[.]session=plasma([[:space:]]|$)' /proc/cmdline &&
@@ -137,6 +138,22 @@ if grep -qE '(^|[[:space:]])steamos[.]session=plasma([[:space:]]|$)' /proc/cmdli
     cp -RP /home/steamos/.local/share/Steam/logs "$w/logs/steam-logs" 2>/dev/null
     cp -P /home/steamos/.steam/steam/logs/bootstrap_log.txt "$w/logs/" 2>/dev/null
     ls -la /home/steamos/.local/share/Steam /home/steamos/.steam > "$w/logs/steam-dirs.txt" 2>&1
+    # Whether PipeWire answers, and where its threads sit in the kernel if not.
+    {
+      ls -la /dev/video* /dev/media* /dev/snd 2>&1
+      for p in $(pgrep -x 'pipewire|wireplumber|pipewire-pulse'); do
+        echo "=== $p $(cat /proc/$p/comm)"
+        for t in /proc/$p/task/*; do
+          echo "--- ${t##*/} $(cat "$t/comm") $(sed 's/.*) //' "$t/stat" | cut -d' ' -f1) $(cat "$t/wchan")"
+          cat "$t/stack" 2>/dev/null
+        done
+        ls -l /proc/$p/fd 2>/dev/null | grep -E 'video|media|snd|v4l'
+      done
+      echo "=== pw-cli info 0"
+      timeout -k 2 10 runuser -u steamos -- env XDG_RUNTIME_DIR=/run/user/1000 pw-cli info 0 2>&1
+      echo "=== wpctl status"
+      timeout -k 2 10 runuser -u steamos -- env XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1
+    } > "$w/logs/pipewire-state.txt" 2>&1
     tar -C "$w/logs" -czf "$w/logs.tgz" . || {
       upload_status 'Cannot pack logs. No logs uploaded.'; exit 1;
     }

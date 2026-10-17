@@ -330,11 +330,20 @@ build_initramfs() {
   [[ "$SOC_ARG" != pocketevo ]] || static_pattern='statically linked|static-pie linked'
   file "$bb" 2>/dev/null | grep -qE "$static_pattern" \
     || die "need a static busybox (apt install busybox-static)"
+  # Validate before clearing staging: reject self-containing input trees.
+  if [[ -n "${INITRAMFS_HOTFIX:-}" ]]; then
+    python3 "${HERE}/hotfix-tree.py" "$INITRAMFS_HOTFIX" "$d/root/hotfix" --check
+  fi
   rm -rf "$d"; mkdir -p "$d/root/bin" "$d/root/dev" "$d/root/proc" "$d/root/sys"
   cp "$bb" "$d/root/bin/busybox"
   install -m0755 "${HERE}/initramfs/init" "$d/root/init"
   install -m0755 "${HERE}/initramfs/konkr-update-recover" "$d/root/konkr-update-recover"
   install -m0755 "${HERE}/initramfs/bootdebug" "$d/root/bootdebug"
+  # Test builds only: fixed root files, laid over the installed ones (see init).
+  if [[ -n "${INITRAMFS_HOTFIX:-}" ]]; then
+    python3 "${HERE}/hotfix-tree.py" "$INITRAMFS_HOTFIX" "$d/root/hotfix"
+    install -m0755 "${HERE}/initramfs/apply-hotfix" "$d/root/apply-hotfix"
+  fi
   (cd "$d/root" && find . | cpio -o -H newc --owner=0:0 2>/dev/null) >"$d/initrd.cpio"
   gzip -9 -n -c "$d/initrd.cpio" >"$d/initrd.gz"
   INITRD="$d/initrd.gz"

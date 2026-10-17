@@ -1,0 +1,101 @@
+#!/bin/busybox sh
+# Trusted, build-time test payload only. No persistent file contents are edited.
+# Errors stop the test boot in init; partial bind mounts remain for inspection
+# until reboot. steamos.hotfix=0 bypasses this helper on the next boot.
+set -eu
+export LC_ALL=C
+umask 077
+
+fail() { echo "hotfix: $*" >&2; exit 1; }
+
+# Reject symlinks in EVERY component, including dangling links. The installed
+# root is not our process root yet: absolute links could escape into initramfs.
+# Missing components are allowed only in the private /etc snapshot.
+safe_path() {
+  base=$1
+  rest=$2
+  while [ -n "$rest" ]; do
+    part=${rest%%/*}
+    case "$part" in ''|.|..) return 1 ;; esac
+    base=$base/$part
+    [ ! -L "$base" ] || return 1
+    if [ "$rest" = "$part" ]; then break; fi
+    [ ! -e "$base" ] || [ -d "$base" ] || return 1
+    rest=${rest#*/}
+  done
+}
+
+[ -d /hotfix ] && [ ! -L /hotfix ] || fail "missing regular payload directory"
+[ -f /hotfix.sha256 ] || fail "missing checksum manifest"
+(cd /hotfix && sha256sum -c /hotfix.sha256) || fail "payload checksum mismatch"
+# Validate all paths before any mount or write to the target root.
+find /hotfix -mindepth 1 > /hotfix.paths
+while IFS= read -r path; do
+  p=${path#/hotfix/}
+  case "$p" in *[!a-zA-Z0-9._+@\ /-]*) fail "unsupported path: $p" ;; esac
+  case "$p" in etc|etc/*|usr|usr/*) ;; *) fail "unsupported root: $p" ;; esac
+  [ ! -L "$path" ] || fail "payload symlink: $p"
+  if [ -d "$path" ]; then continue; fi
+  [ -f "$path" ] || fail "non-regular payload: $p"
+  safe_path /newroot "$p" || fail "unsafe target: $p"
+  case "$p" in
+    etc/sddm.conf.d/zzz-steamos-arm-session.conf|usr/lib/steamos-arm/bootdebug|usr/lib/systemd/system/steamos-arm-bootdebug.service|usr/lib/systemd/system/multi-user.target.wants/steamos-arm-bootdebug.service)
+      fail "init-managed path: $p" ;;
+    usr/*) [ -f "/newroot/$p" ] || fail "missing installed file: $p" ;;
+    etc/*) [ ! -e "/newroot/$p" ] || [ -f "/newroot/$p" ] || fail "non-file target: $p" ;;
+    *) fail "invalid file: $p" ;;
+  esac
+done < /hotfix.paths
+
+# If persistent /etc could not mount, let the ordinary boot handle it only
+# after the tester explicitly bypasses this payload. A late etc.mount must
+# never hide a hotfix or write its new files into the persistent upper.
+if [ -d /hotfix/etc ]; then
+  [ -d /newroot/etc ] && [ ! -L /newroot/etc ] || fail "unsafe etc directory"
+  if [ -d /newroot/var/lib/overlays/etc ] && ! grep -q ' /newroot/etc ' /proc/mounts; then
+    fail "persistent etc overlay is not mounted"
+  fi
+fi
+
+# A fixed, empty mountpoint survives reboot; payload bytes live ONLY on tmpfs.
+# Keep it outside /run and /var, which systemd may mount over at handover.
+h=/newroot/.steamos-arm-hotfix
+if [ -e "$h" ] || [ -L "$h" ]; then
+  [ -d "$h" ] && [ ! -L "$h" ] && [ "$(stat -c %u "$h")" = 0 ] &&
+    [ "$(stat -c %a "$h")" = 700 ] && [ -z "$(ls -A "$h")" ] || fail "unsafe staging mountpoint"
+else
+  mkdir -m 700 "$h"
+fi
+mount -t tmpfs -o mode=0700,nosuid,nodev hotfix "$h"
+mkdir "$h/files"
+cp -a /hotfix/. "$h/files/"
+cp /hotfix.sha256 /hotfix.modes "$h/"
+(cd "$h/files" && sha256sum -c "$h/hotfix.sha256") || fail "staged checksum mismatch"
+if [ -d /hotfix/etc ]; then
+  # Snapshot the already-mounted /etc. Bind the prepared directory only after
+  # all copies succeed, supporting new files without persistent placeholders.
+  # ALL /etc changes during this test boot are consequently transient.
+  mkdir "$h/etc"
+  cp -a /newroot/etc/. "$h/etc/"
+fi
+while IFS= read -r path; do
+  [ -f "$path" ] || continue
+  p=${path#/hotfix/}
+  case "$p" in
+    etc/*)
+      target=$h/$p
+      (umask 022; mkdir -p "${target%/*}")
+      rm -f "$target"
+      cp -p "$h/files/$p" "$target"
+      ;;
+  esac
+done < /hotfix.paths
+while IFS= read -r path; do
+  [ -f "$path" ] || continue
+  p=${path#/hotfix/}
+  case "$p" in
+    usr/*) mount -o bind "$h/files/$p" "/newroot/$p" ;;
+  esac
+done < /hotfix.paths
+[ ! -d /hotfix/etc ] || mount -o bind "$h/etc" /newroot/etc
+echo "hotfix: applied temporary test payload (manifest: /.steamos-arm-hotfix/hotfix.sha256)"

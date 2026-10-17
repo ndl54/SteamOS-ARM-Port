@@ -218,6 +218,16 @@ if [ -n "$rootdev" ] && mount -t ext4 -o rw "$rootdev" /newroot; then
       rm -f "$f"
     fi
   done
+  # A trusted test image opts in by carrying /hotfix; the exact disable token
+  # bypasses it. Apply after recovery/session cleanup, before starting systemd.
+  if [ -d /hotfix ] && ! grep -qE '(^|[[:space:]])steamos[.]hotfix=0([[:space:]]|$)' /proc/cmdline; then
+    if ! /bin/busybox sh /apply-hotfix; then
+      snap "HOTFIX FAILED"
+      echo "Hotfix failed; boot stopped. Reboot with steamos.hotfix=0 to bypass." >&2
+      exec sh
+    fi
+    snap "hotfix applied"
+  fi
   if [ "$debug" = 1 ]; then
     # Log collector (see bootdebug), only for this boot's root.
     d=/newroot/usr/lib/steamos-arm

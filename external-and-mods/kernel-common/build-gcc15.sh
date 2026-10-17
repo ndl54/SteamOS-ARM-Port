@@ -23,8 +23,15 @@ if [[ "$(uname -m)" != aarch64 ]]; then
   PKGS+=" gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu"
   export CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 fi
+# The caller's payload must be visible at the same canonical path in the
+# container. Resolve relative paths now; never silently package another tree.
+if [[ -n "${INITRAMFS_HOTFIX:-}" ]]; then
+  INITRAMFS_HOTFIX="$(cd -- "$INITRAMFS_HOTFIX" && pwd -P)"
+  mount_root="$(cd -- "$MOUNT" && pwd -P)"
+  [[ "$INITRAMFS_HOTFIX" == "$mount_root"/* ]] || { echo "INITRAMFS_HOTFIX must be under MOUNT" >&2; exit 1; }
+fi
 env_args=()
-for v in SM8550_RECIPE SM8650_RECIPE WORK ROCKNIX_DIR JOBS OUT_BASE LOCALVERSION DTBS_OVERRIDE CROSS_COMPILE FRAME_FW_DIR; do
+for v in SM8550_RECIPE SM8650_RECIPE WORK ROCKNIX_DIR JOBS OUT_BASE LOCALVERSION DTBS_OVERRIDE CROSS_COMPILE FRAME_FW_DIR INITRAMFS_HOTFIX; do
   [[ -n "${!v:-}" ]] && env_args+=(-e "$v=${!v}")
 done
 exec "$DOCKER" run --rm --security-opt label=disable -v "$MOUNT:$MOUNT" -v "$BUSYBOX:/bin/busybox:ro" "${env_args[@]}" \
