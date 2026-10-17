@@ -27,6 +27,7 @@ usbshell=0
 usbimage=0
 steamosroot=""
 bootlabel=ROCKNIX
+session=""
 for arg in $(cat /proc/cmdline); do
   case "$arg" in
     konkr.bootlog_wait=*) extra="${arg#*=}" ;;
@@ -34,6 +35,8 @@ for arg in $(cat /proc/cmdline); do
     steamos.usbshell=1) usbshell=1 ;;
     steamos.usbimage=1) usbimage=1 ;;
     steamos.root=*) steamosroot="${arg#steamos.root=}" ;;
+    # Debug boot images: log straight into Desktop Mode for this boot.
+    steamos.session=plasma) session=plasma ;;
     # The FAT partition with the boot files, logs and the debug switch: ROCKNIX
     # on internal handheld installs, super on the Lenovo tablets.
     steamos.bootlabel=*) bootlabel="${arg#steamos.bootlabel=}" ;;
@@ -198,6 +201,23 @@ if [ -n "$rootdev" ] && mount -t ext4 -o rw "$rootdev" /newroot; then
       -o "lowerdir=/newroot/etc,upperdir=$o/upper,workdir=$o/work" /newroot/etc ||
       echo "etc overlay failed, leaving it to etc.mount"
   fi
+  # Desktop Mode for this boot (steamos.session=plasma). The next boot
+  # through this initramfs removes our override when the token is absent.
+  # If the early etc overlay mount failed, update its upper layer too:
+  # systemd may mount it later and otherwise hide this boot's selection.
+  session_etc=/newroot/etc
+  if [ -d "$o/upper" ] && ! grep -q " /newroot/etc " /proc/mounts; then
+    session_etc="$session_etc $o/upper"
+  fi
+  for e in $session_etc; do
+    f=$e/sddm.conf.d/zzz-steamos-arm-session.conf
+    if [ "$session" = plasma ]; then
+      # An unmounted upper layer may contain an OverlayFS whiteout here.
+      rm -f "$f" && mkdir -p "${f%/*}" && printf '[Autologin]\nSession=plasma.desktop\n' > "$f"
+    else
+      rm -f "$f"
+    fi
+  done
   if [ "$debug" = 1 ]; then
     # Log collector (see bootdebug), only for this boot's root.
     d=/newroot/usr/lib/steamos-arm
