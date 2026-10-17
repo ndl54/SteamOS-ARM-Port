@@ -1,8 +1,7 @@
 [Unit]
 Description=One brightness slider for both AYN Thor screens
-# Steam's Game Mode slider writes the first backlight it finds, the Thor's
-# bottom panel. This covers that file before Game Mode starts and drives
-# both panels from it (thor-backlightd explains the rest).
+# Follow Game Mode's top-panel writes through gamescope and cover the bottom
+# brightness file for direct writes before the display manager starts.
 ConditionFirmware=device-tree-compatible(ayn,thor)
 After=systemd-udev-settle.service local-fs.target
 Before=display-manager.service graphical.target

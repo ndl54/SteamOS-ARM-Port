@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """thor-backlightd: one brightness slider for both AYN Thor screens.
 
-Steam's Game Mode brightness slider writes the first backlight it finds in
-/sys/class/backlight itself, and on the Thor that is the bottom panel
-(ae94000.dsi.0, before the top's ae96000.dsi.0). So moving the slider dimmed
-the bottom screen and left the top one alone.
+Steam's Game Mode brightness atom reaches the top panel (ae96000.dsi.0)
+through gamescope. This daemon follows changes it did not write and applies
+the bottom panel's share. The older direct-sysfs path instead writes the
+first backlight, the bottom panel (ae94000.dsi.0).
 
 Before Game Mode starts (this unit runs before the display manager), this
 keeps the bottom panel's brightness file open and bind-mounts a plain file
-over it. Steam writes its level there and this is the only writer of both
-panels:
+over it. Direct writes and dashboard requests set the level there; observed
+gamescope top-panel changes are mirrored there too:
 
   Game Mode     top    = Steam's level
                 bottom = Steam's level x the bottom share (10-100 %, set on
@@ -135,8 +135,13 @@ class Panel:
             try:
                 with open(f"{self.d}/bl_power", "w", encoding="utf-8") as fh:
                     fh.write(want)
+                self.power_err = None
             except OSError as exc:
-                log(f"bl_power: {exc}")
+                # The panel refuses it while it powers up (EINVAL): log once,
+                # keep trying on the next pass.
+                if str(exc) != getattr(self, "power_err", None):
+                    log(f"bl_power: {exc}")
+                self.power_err = str(exc)
 
 
 class Daemon:
@@ -265,6 +270,23 @@ class Daemon:
                 except OSError:
                     pass
 
+    def follow_top(self) -> bool:
+        """Steam's slider now reaches the top panel through gamescope (its
+        brightness atom), not through the file above: nothing changed for the
+        bottom panel and the slider seemed to do nothing there. Take a top
+        level we didn't write as Steam's new level."""
+        if not game_mode():
+            return False
+        with self.lock:
+            # apply() can write the top from the dashboard thread. Sample
+            # under the same lock so a stale read cannot undo that new level.
+            cur = self.top.read()
+            if cur < 0 or self.top.last < 0 or cur == self.top.last:
+                return False
+            self.top.last = cur
+            self.write_steam_file(round(cur / max(self.top.max, 1) * self.steam_max))
+        return True
+
     def run(self) -> None:
         threading.Thread(target=self.serve, daemon=True).start()
         self.apply(force=True)
@@ -272,6 +294,7 @@ class Daemon:
         next_enforce = time.monotonic() + ENFORCE_S
         while True:
             time.sleep(POLL_S)
+            self.follow_top()
             try:
                 m = os.stat(STEAM_FILE).st_mtime_ns
             except OSError:
