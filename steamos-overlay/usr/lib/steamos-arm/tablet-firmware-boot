@@ -9,10 +9,12 @@ grep -aq "lenovo,elden" /sys/firmware/devicetree/base/compatible 2>/dev/null && 
 manifest=/usr/share/steamos-arm/tablets/${model}-firmware.json
 dest=/var/lib/steamos-arm/firmware/${model}
 [[ -f "$manifest" ]] || exit 0
-before="$(find "$dest" -type f 2>/dev/null | wc -l)"
-/usr/lib/steamos-arm/tablet-firmware "$manifest" "$dest" --also /usr/lib/firmware
-after="$(find "$dest" -type f 2>/dev/null | wc -l)"
-(( after > before )) || exit 0
+changed=$(mktemp) || exit 1
+trap 'rm -f "$changed"' EXIT
+/usr/lib/steamos-arm/tablet-firmware "$manifest" "$dest" --also /usr/lib/firmware \
+  --changed-file "$changed" || exit 1
+# Replacing a stale fallback changes bytes without changing the file count.
+[[ -s "$changed" ]] || exit 0
 # Remote processors that failed to start for want of firmware.
 for rp in /sys/class/remoteproc/remoteproc*; do
   [[ "$(cat "$rp/state" 2>/dev/null)" == offline ]] && echo start >"$rp/state" 2>/dev/null
@@ -21,5 +23,6 @@ done
 if [[ ! -e /sys/class/net/wlan0 ]]; then
   modprobe -r ath12k_wifi7 ath12k 2>/dev/null; modprobe ath12k_wifi7 2>/dev/null || modprobe ath12k 2>/dev/null
 fi
-systemctl try-restart bluetooth.service 2>/dev/null
+# This unit is ordered before bluetooth: waiting for that job would wait on us.
+systemctl --no-block try-restart bluetooth.service 2>/dev/null
 exit 0

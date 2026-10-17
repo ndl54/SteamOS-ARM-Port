@@ -44,4 +44,57 @@ install -Dm0755 "$O/usr/lib/steamos-arm/tablet-boot-ok" "$R/usr/lib/steamos-arm/
 install -Dm0644 "$O/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service" "$R/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service"
 mkdir -p "$R/usr/lib/systemd/system/multi-user.target.wants"
 ln -sfn ../steamos-arm-tablet-boot-ok.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tablet-boot-ok.service"
+# Touch reports the portrait panel's coordinates, and it is on SPI, which
+# gamescope doesn't tie to a display (only I2C and USB), so it never rotates
+# it. Game Mode turns the panel right (GAMESCOPE_ORIENTATION on the 8 Elite):
+# rotate touch to match in libinput, and undo that in Plasma, where KWin
+# maps touch to the output itself.
+install -Dm0644 /dev/stdin "$R/usr/lib/udev/rules.d/90-steamos-arm-elden-touch.rules" <<'RULES'
+# Lenovo Legion Y700 Gen 4: the touch panel reports portrait coordinates, Game Mode runs landscape.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="NVTCapacitiveTouchScreen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="NVTCapacitivePen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+RULES
+# KWin already maps touch to the rotated output, so Desktop Mode replaces
+# the udev calibration with identity before applying its own output rotation.
+# Merge the two exact groups independently: a name in a comment or an existing
+# touch group must not suppress the pen group or a missing CalibrationMatrix.
+# An existing persistent /etc upper can hide the base file, so update both.
+for etc in "$R/etc" "$R/var/lib/overlays/etc/upper"; do
+  [[ "$etc" == "$R/etc" || -d "$etc" ]] || continue
+  mkdir -p "$etc/xdg"
+  cfg="$etc/xdg/kcminputrc"
+  touch "$cfg"
+  awk '
+    BEGIN {
+      group[1] = "[Libinput][0][0][NVTCapacitiveTouchScreen]"
+      group[2] = "[Libinput][0][0][NVTCapacitivePen]"
+      identity = "CalibrationMatrix=1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
+    }
+    /^[ \t]*\[/ {
+      header = $0
+      sub(/^[ \t]*/, "", header)
+      sub(/[ \t]*$/, "", header)
+      target = (header == group[1] || header == group[2])
+      if (target) {
+        seen[header] = 1
+        print
+        print identity
+        next
+      }
+    }
+    target && /^[ \t]*CalibrationMatrix[ \t]*=/ { next }
+    { print }
+    END {
+      for (i = 1; i <= 2; i++) {
+        if (!seen[group[i]]) {
+          print ""
+          print group[i]
+          print identity
+        }
+      }
+    }
+  ' "$cfg" > "$W/kcminputrc"
+  cat "$W/kcminputrc" > "$cfg"
+done
+
 echo "[elden] firmware manifest, topology and audio profile installed"
