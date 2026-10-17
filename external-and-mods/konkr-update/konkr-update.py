@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -319,6 +320,45 @@ def extract_members(package, dest, names):
     raise ValueError(f'update is missing {", ".join(sorted(want))}')
 
 
+class DeltaMismatch(ValueError):
+    """Only missing delta blobs, after safe staging cleanup, permit fallback."""
+    def __init__(self, manifest):
+        super().__init__('this system differs: install the full update')
+        self.target = target_identity(manifest)
+
+
+def target_identity(manifest):
+    # Delta/full transport metadata differs; the signed install target must not.
+    target = {k: manifest[k] for k in ('format', 'architecture', 'version', 'inventory')}
+    target['devices'] = sorted(manifest['devices'])
+    return hashlib.sha256(json.dumps(target, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def check_target(manifest, expected_version='', expected_target='', require_full=False):
+    if expected_version and manifest.get('version') != expected_version:
+        raise ValueError('update version does not match the selected release')
+    if expected_target and target_identity(manifest) != expected_target:
+        raise ValueError('full update target does not match the delta')
+    if require_full and (manifest.get('kind') != 'full' or
+            {e['f'][4] for e in manifest['inventory'].values() if 'f' in e} - set(manifest['blobs'])):
+        raise ValueError('full update is missing target contents')
+
+
+def discard_failed_stage(work, pending):
+    # Never let rmtree walk a live root bind mount after a failed unmount.
+    # Retain incomplete transactions and never advertise them as retryable.
+    if pending.exists() or (work / 'rootview').exists():
+        raise RuntimeError(f'staging incomplete; retained transaction {work}')
+    shutil.rmtree(work)
+
+
+def pending_status():
+    pending = Path('/' + PENDING)
+    incomplete = pending.exists() and (Path('/home/.konkr-updates') /
+        pending.read_text().strip() / 'staging-incomplete').exists()
+    return {'staged': pending.exists() and not incomplete, 'stage_failed': bool(incomplete)}
+
+
 def stage(args):
     if os.geteuid() != 0: raise ValueError('staging needs administrator access')
     model = Path('/sys/firmware/devicetree/base/model').read_text().rstrip('\0\n')
@@ -349,7 +389,10 @@ def stage(args):
         if package_format(package) == FORMAT2:
             if mount_info('/var')['source'] != root_info['source']:
                 raise ValueError('a separate /var partition is not supported')
-            return stage2(work, package, root_info, home_info, boot_info, model, pending)
+            return stage2(work, package, root_info, home_info, boot_info, model, pending,
+                          args.expected_version, args.expected_target, args.require_full)
+        if args.expected_version or args.expected_target or args.require_full:
+            raise ValueError('automatic updates require a signed format 2 package')
         if not expected: raise ValueError('--sha256 is required for this package')
         manifest, size = validate_archive(package)
         # One package per SoC: its KERNEL only boots the models it lists.
@@ -383,7 +426,7 @@ def stage(args):
         install_kernel(work / 'next-KERNEL', Path('/boot'))
         print('Update staged. Reboot to apply. Backup:', work)
     except BaseException:
-        if not pending.exists(): shutil.rmtree(work)
+        discard_failed_stage(work, pending)
         raise
 
 
@@ -714,7 +757,8 @@ def restore2(root, boot, home, work):
     install_kernel(work / 'previous-KERNEL', boot)
 
 
-def stage2(work, package, root_info, home_info, boot_info, model, pending):
+def stage2(work, package, root_info, home_info, boot_info, model, pending,
+           expected_version="", expected_target="", require_full=False):
     """Stage a signed format 2 package: plan against this system, keep only
     the contents the plan needs, back up only what it will change."""
     extract_members(package, work, ('manifest.json', 'manifest.sig'))
@@ -724,6 +768,7 @@ def stage2(work, package, root_info, home_info, boot_info, model, pending):
         raise ValueError('unsupported update format or architecture')
     if model not in manifest.get('devices', []):
         raise ValueError(f'this update is for {", ".join(manifest["devices"])}, not {model}')
+    check_target(manifest, expected_version, expected_target, require_full)
     target = manifest['inventory']
     for key in target:
         p = PurePosixPath(key)
@@ -739,8 +784,17 @@ def stage2(work, package, root_info, home_info, boot_info, model, pending):
         need = {target[k]['f'][4] for k in plan['write']}
         missing = need - set(manifest['blobs'])
         if missing:
-            raise ValueError('this system differs from the releases this update was made for '
-                             f'({", ".join(manifest.get("from") or ["?"])}): install the full update')
+            raise DeltaMismatch(manifest)
+        # Full fallback can be much larger than the delta. Check HOME before
+        # extracting blobs/backups; reserve room for recovery and boot copies.
+        blob_sizes = {e['f'][4]: e['f'][3] for e in target.values() if 'f' in e}
+        backup_bytes = 0
+        for key in set(plan_keys(plan)):
+            try: st = os.lstat(real_path(key, view, Path('/home'), Path('/boot')))
+            except FileNotFoundError: continue
+            if stat.S_ISREG(st.st_mode): backup_bytes += st.st_size
+        if shutil.disk_usage('/home').free < sum(blob_sizes[h] for h in need) + backup_bytes + (512 << 20):
+            raise ValueError('not enough HOME space for payload and rollback backup')
         listing = work / 'blobs.list'
         listing.write_text(''.join(f'blobs/{h[:2]}/{h}\n' for h in sorted(need)))
         if need: run('tar', '-xzf', package, '-C', work, '-T', listing)
@@ -769,10 +823,14 @@ def stage2(work, package, root_info, home_info, boot_info, model, pending):
     write_json(work / 'transaction.json', info)
     recovery_runtime(work / 'recovery', helper)
     state(work, 'backed-up')
+    # A pending marker alone does not prove boot staging completed.
+    (work / 'staging-incomplete').touch()
     pending.parent.mkdir(parents=True, exist_ok=True)
     pending.write_text(work.name + '\n'); os.chmod(pending, 0o600)
     os.sync()
     if (work / 'next-KERNEL').exists(): install_kernel(work / 'next-KERNEL', Path('/boot'))
+    (work / 'staging-incomplete').unlink()
+    os.sync()
     print(f'Update {manifest["version"]} staged: {n} changes. Restart to install.')
 
 
@@ -888,6 +946,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
     p = sub.add_parser('stage'); p.add_argument('package'); p.add_argument('--sha256')
+    p.add_argument('--expected-version', default='')
+    p.add_argument('--expected-target', default='')
+    p.add_argument('--require-full', action='store_true')
     p = sub.add_parser('record-inventory', help='write the install inventory of a built rootfs')
     p.add_argument('--root', required=True)
     p.add_argument('--version', default='')
@@ -918,9 +979,12 @@ def main():
             # The device's own model decides the SoC (the REDMAGIC 6 shares this
             # rootfs but no update package fits it, so it gets none).
             print(json.dumps({'version': rel.get('version', ''), 'soc': this_soc(),
-                              'staged': Path('/' + PENDING).exists()}))
+                              **pending_status()}))
         else:
             m, size = validate_archive(a.package); print(json.dumps({'version': m['version'], 'bytes': size}, indent=2))
+    except DeltaMismatch as e:
+        print('DELTA_MISMATCH: ' + json.dumps({'target': e.target}), file=sys.stderr)
+        return 9
     except Exception as e:
         print('ERROR:', e, file=sys.stderr); return 1
     return 0
