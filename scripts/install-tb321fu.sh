@@ -193,6 +193,19 @@ UNIT
 mkdir -p "$R/usr/lib/systemd/system/multi-user.target.wants"
 ln -sfn ../steamos-arm-tb321fu-gpu-on.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tb321fu-gpu-on.service"
 
+# The tablet has been reported to hang during USB safe removal. Keep the
+# desktop's normal unmount/error handling, but stop advertising UDisks
+# PowerOff support. All filesystems still need to be unmounted before unplugging.
+install -Dm0644 /dev/stdin "$R/usr/lib/udev/rules.d/90-steamos-arm-tb321fu-usb-storage.rules" <<'RULES'
+# Lenovo Legion Y700 Gen 3 only: skip desktop USB power-off after unmount.
+# USB SATA bridges can have ID_BUS=ata; match the USB parent instead.
+# Match one complete NUL-separated compatible, not a board-name substring.
+ACTION=="add|change", SUBSYSTEM=="block", SUBSYSTEMS=="usb", ENV{DEVTYPE}=="disk", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", ENV{UDISKS_CAN_POWER_OFF}="0"
+# The internal UFS partitions (Android's and the system's own) out of the
+# desktop's Disks & Devices list, where one tap mounts them.
+ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_PATH}=="*ufs*", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", ENV{UDISKS_IGNORE}="1"
+RULES
+
 # The cameras have no working driver on this kernel (/dev/video* fail with
 # ENOMEM) and WirePlumber's v4l2 hook never completes on them, which stalls
 # its event queue: no stream gets linked, no sound and no microphone. A
