@@ -14,7 +14,8 @@ This writes ~/.config/kwinoutputconfig.json from what is connected:
   - each touchscreen tied to its own panel in kcminputrc.
 
 It only replaces a file it wrote itself (or the old fixed one); once you
-change the layout in System Settings, it leaves it alone.
+change the layout in System Settings, it leaves it alone. A verified old
+desktop-fit seed can be repaired once without taking ownership of its settings.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HOME = Path(os.environ.get("HOME", "/home/steamos"))
@@ -32,6 +34,9 @@ KWIN_OUTPUTS = CONFIG / "kwinoutputconfig.json"
 KCMINPUT = CONFIG / "kcminputrc"
 STAMP = CONFIG / "steamos-arm" / "desktop-outputs.sha256"
 LEGACY = Path("/usr/share/steamos-arm/kwinoutputconfig.legacy.json")
+FIT_STATE = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "steamos-arm" / "desktop-fit-1"
+SEED_MODELS = {"Retroid Pocket 6", "AYN Odin 2 Portal", "AYANEO Pocket DS",
+               "AYANEO Pocket EVO", "AYANEO Pocket DMG"}
 
 # DRM "panel orientation" -> KWin transform. right-up is what DT rotation 90
 # gives; the old fixed file used Rotated270 for it and that is verified.
@@ -196,6 +201,57 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ""
 
 
+def fitted_scale(p: dict) -> float:
+    # The desktop-fit-1 producer's policy, not desktop-outputs' default scale.
+    return min(2.0, max(1.0, round(max(p["width"], p["height"]) / 1280 * 4) / 4))
+
+
+def seeded_upside_down(found: list[dict]) -> bool:
+    """Recognize only the complete old desktop-fit seed, not a rotation alone.
+
+    desktop-fit ran only with one DSI panel, changed scale/autoRotation in
+    the shipped layout, and recorded the panel dimensions in desktop-fit-1.
+    Any other field, saved output/setup, or marker mismatch is ambiguous:
+    preserve it. In particular, never rebuild a user's docked layout.
+    """
+    if STAMP.exists() or len(found) != 1 or model() not in SEED_MODELS:
+        return False
+    p = found[0]
+    if p["name"] != "DSI-1" or p["orientation"] != "left-up":
+        return False
+    try:
+        marker = f"{p['name']} {p['width']}x{p['height']} scale {fitted_scale(p)}\n"
+        if FIT_STATE.read_text() != marker:
+            return False
+        expected = json.loads(LEGACY.read_text())
+        outputs = next(s["data"] for s in expected if s["name"] == "outputs")
+        if (len(outputs) != 1 or outputs[0]["connectorName"] != "DSI-1"
+                or outputs[0]["transform"] != "Rotated270"
+                or outputs[0]["scale"] != 1.25
+                or outputs[0]["autoRotation"] != "InTabletMode"):
+            return False
+        outputs[0]["scale"] = fitted_scale(p)
+        outputs[0]["autoRotation"] = "Never"
+        actual = json.loads(KWIN_OUTPUTS.read_text())
+        return json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)
+    except (OSError, ValueError, StopIteration, KeyError, TypeError, AttributeError):
+        return False
+
+
+def atomic_write(path: Path, data: str) -> None:
+    """Replace a complete file; failed writes leave the old file in place."""
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=f".{path.name}.", delete=False) as fh:
+            tmp = Path(fh.name)
+            fh.write(data)
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None and tmp.exists():
+            tmp.unlink()
+
+
 def main() -> int:
     found = panels()
     if not found:
@@ -205,15 +261,24 @@ def main() -> int:
     ours = STAMP.read_text().strip() if STAMP.exists() else ""
     legacy = digest(LEGACY) if LEGACY.exists() else ""
     if current and current not in (ours, legacy):
-        log("kwinoutputconfig.json was changed by the user, keeping it")
-        return 0
+        if seeded_upside_down(found):
+            # Keep desktop-fit's completed scale/touch policy. Do not stamp this
+            # file as ours: the next run would rebuild it with the unfitted scale
+            # and autoRotation, while desktop-fit-1 prevents fitting it again.
+            repaired = build(found)
+            repaired[0]["data"][0]["scale"] = fitted_scale(found[0])
+            repaired[0]["data"][0]["autoRotation"] = "Never"
+            atomic_write(KWIN_OUTPUTS, json.dumps(repaired, indent=4) + "\n")
+            log("repaired the verified old desktop-fit Rotated270 seed")
+            return 0
+        else:
+            log("kwinoutputconfig.json was changed by the user, keeping it")
+            return 0
     data = json.dumps(build(found), indent=4) + "\n"
     CONFIG.mkdir(parents=True, exist_ok=True)
-    tmp = KWIN_OUTPUTS.with_suffix(".tmp")
-    tmp.write_text(data)
-    os.replace(tmp, KWIN_OUTPUTS)
+    atomic_write(KWIN_OUTPUTS, data)
     STAMP.parent.mkdir(parents=True, exist_ok=True)
-    STAMP.write_text(digest(KWIN_OUTPUTS) + "\n")
+    atomic_write(STAMP, digest(KWIN_OUTPUTS) + "\n")
     log("wrote " + ", ".join(f"{p['name']} {p['width']}x{p['height']} {transform(p)} x{scale(p)}"
                              for p in found))
     map_touch(found)
