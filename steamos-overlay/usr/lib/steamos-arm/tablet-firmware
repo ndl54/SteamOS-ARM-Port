@@ -236,7 +236,8 @@ def main():
 
     rows = [r for r in json.load(open(a.manifest))["files"] if not r.get("generated")]
     sizes = {r["size"] for r in rows}
-    # Several manifest paths deliberately share identical bytes.
+    # Searched by content; several paths can share one (the Wi-Fi's tmel.bin
+    # is Bluetooth's tmel_peach_20.elf), and each of them gets written.
     wanted = {r["sha256"] for r in rows}
     found = {}
     dest = Path(a.dest)

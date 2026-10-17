@@ -4,7 +4,7 @@
 # the DSPs, Wi-Fi and Bluetooth another go if they came up without it.
 set -u
 model=""
-grep -aq "lenovo,elden" /sys/firmware/devicetree/base/compatible 2>/dev/null && model=elden
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,elden' && model=elden
 [[ -n "$model" ]] || exit 0
 manifest=/usr/share/steamos-arm/tablets/${model}-firmware.json
 dest=/var/lib/steamos-arm/firmware/${model}
@@ -19,9 +19,49 @@ trap 'rm -f "$changed"' EXIT
 for rp in /sys/class/remoteproc/remoteproc*; do
   [[ "$(cat "$rp/state" 2>/dev/null)" == offline ]] && echo start >"$rp/state" 2>/dev/null
 done
-# Wi-Fi and Bluetooth load their firmware when the driver binds.
-if [[ ! -e /sys/class/net/wlan0 ]]; then
-  modprobe -r ath12k_wifi7 ath12k 2>/dev/null; modprobe ath12k_wifi7 2>/dev/null || modprobe ath12k 2>/dev/null
+# Wi-Fi and Bluetooth load their firmware when the driver binds. On the first
+# boot the Wi-Fi card probes before the copy and is left unbound; reloading
+# the module didn't bring it back, so remove the card and rescan the bus,
+# which gives the driver another probe. Interface names need not be wlan0.
+wifi_present() {
+  local net
+  for net in /sys/class/net/*; do
+    [[ -e "$net/phy80211" ]] && return 0
+  done
+  return 1
+}
+wait_for_wifi() {
+  local attempt
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    wifi_present && return 0
+    sleep 0.5
+  done
+  wifi_present
+}
+if ! wifi_present; then
+  removed=0
+  for d in /sys/bus/pci/devices/*; do
+    [[ "$(cat "$d/vendor" 2>/dev/null)" == 0x17cb && "$(cat "$d/class" 2>/dev/null)" == 0x0280* && ! -e "$d/driver" ]] || continue
+    echo "tablet-firmware: Wi-Fi ${d##*/} unbound, rescanning"
+    if echo 1 >"$d/remove"; then
+      removed=1
+    else
+      echo "tablet-firmware: Wi-Fi ${d##*/} removal failed" >&2
+    fi
+  done
+  # Do not rescan unrelated PCI devices when no eligible card was removed.
+  if (( removed )); then
+    if echo 1 >/sys/bus/pci/rescan; then
+      wait_for_wifi || true
+    else
+      echo "tablet-firmware: PCI rescan failed" >&2
+    fi
+  fi
+  if ! wifi_present; then
+    modprobe -r ath12k_wifi7 ath12k 2>/dev/null; modprobe ath12k_wifi7 2>/dev/null || modprobe ath12k 2>/dev/null
+    wait_for_wifi || true
+  fi
+  wifi_present && echo "tablet-firmware: Wi-Fi interface present" || echo "tablet-firmware: Wi-Fi still missing"
 fi
 # This unit is ordered before bluetooth: waiting for that job would wait on us.
 systemctl --no-block try-restart bluetooth.service 2>/dev/null
