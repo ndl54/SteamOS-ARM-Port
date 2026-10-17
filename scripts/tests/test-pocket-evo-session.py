@@ -19,6 +19,13 @@ SLEEP = REPO / 'sm8550-overlay/usr/lib/pocketevo/pocket-evo-sleep'
 SHARED_SLEEP = REPO / 'sm8650-overlay/usr/lib/konkr/konkr-sleep'
 
 
+def mock_recovery(source):
+    # Never invoke installed Python helpers from shell policy tests.
+    return source.replace('/usr/bin/python3 /usr/lib/pocketevo/pocket-evo-controller',
+                          'controller_recover').replace(
+        '/usr/bin/python3 /usr/lib/pocketevo/pocket-evo-usb-sleep', 'usb_sleep')
+
+
 def fake_tool():
     tool = Path(sys.argv[2]).name
     args = sys.argv[3:]
@@ -146,11 +153,13 @@ class SessionPolicies(unittest.TestCase):
     def test_post_restores_wifi_before_scan_without_mutating_sysfs(self):
         # Use real post/step control flow with mock hardware functions. Both
         # the full SM8550 path and the existing light path must start a watch.
-        source = SLEEP.read_text().split('\n# Other boards retain', 1)[0].split('\ncase "${1:-}" in', 1)[0]
+        source = mock_recovery(SLEEP.read_text()).split('\n# Other boards retain', 1)[0].split('\ncase "${1:-}" in', 1)[0]
         source = source.replace('/sys/module/', str(self.root / 'modules') + '/')
         for is_light in (0, 1):
             mock = '''
 report_end() { :; }
+usb_sleep() { echo usb-$1; }
+controller_recover() { echo controller; }
 sleep_debug() { :; }
 ufs_on() { echo ufs; }
 light() { return LIGHT_RESULT; }
@@ -167,9 +176,38 @@ post
             self.assertEqual(result.returncode, 0, result.stderr)
             events = result.stdout.splitlines()
             self.assertIn('scan', events)
+            self.assertLess(events.index('usb-post'), events.index('controller'))
             self.assertLess(events.index('ufs'), events.index('scan'))
             if is_light == 1:  # shell exit 1 => full preparation
                 self.assertLess(events.index('reload'), events.index('scan'))
+
+    def test_failed_usb_post_skips_mcu_but_restores_wifi_touch_and_audio(self):
+        source = mock_recovery(SLEEP.read_text()).split('\n# Other boards retain', 1)[0]
+        source = source.replace('/sys/module/', str(self.root / 'modules') + '/')
+        mock = """
+report_end() { :; }
+sleep_debug() { :; }
+ufs_on() { :; }
+usb_sleep() { return 1; }
+controller_recover() { echo unexpected-mcu; }
+light() { return 1; }
+touch_on() { echo touch; }
+modprobe() { echo reload; }
+timeout() { shift; "$@"; }
+wifi_watch_start() { echo scan; }
+audio() { echo audio-$1; }
+systemctl() { :; }
+post
+"""
+        result = subprocess.run(['bash', '-c', source + '\n' + mock],
+                                env=self.env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('unexpected-mcu', result.stdout)
+        self.assertIn('usb=pending', result.stdout)
+        events = result.stdout.splitlines()
+        self.assertIn('touch', events)
+        self.assertIn('audio-0', events)
+        self.assertLess(events.index('reload'), events.index('scan'))
 
     def ufs_fixture(self, compatible, helper=SLEEP):
         dt = self.root / 'compatible'
@@ -180,7 +218,7 @@ post
         for path in (driver / 'bind', driver / 'unbind', host / 'clkscale_enable'):
             path.write_text('untouched\n')
         state = self.root / 'ufs-unbound'
-        source = helper.read_text().split('\n# Other boards retain', 1)[0].split('\ncase "${1:-}" in', 1)[0]
+        source = mock_recovery(helper.read_text()).split('\n# Other boards retain', 1)[0].split('\ncase "${1:-}" in', 1)[0]
         source = source.replace('/run/konkr/ufs-unbound', str(state))
         source = source.replace('/proc/device-tree/compatible', str(dt))
         source = source.replace('/sys/bus/platform/drivers/ufshcd-qcom', str(driver))
@@ -196,6 +234,8 @@ post
         mock = '''
 report_start() { :; }
 report_end() { :; }
+usb_sleep() { echo usb-$1; }
+controller_recover() { echo controller; }
 sleep_debug() { :; }
 sync() { :; }
 wifi_mark() { :; }
@@ -259,7 +299,7 @@ post
             p.write_text('original-helper')
         subprocess.run(['bash', str(REPO / 'scripts/install-pocket-evo-sleep.sh'), str(root)],
                        check=True, capture_output=True)
-        for helper in ('pocket-evo-sleep', 'pocket-evo-wifi-wake'):
+        for helper in ('pocket-evo-sleep', 'pocket-evo-wifi-wake', 'pocket-evo-usb-sleep'):
             path = Path('usr/lib/pocketevo') / helper
             self.assertEqual((root / path).read_bytes(), (REPO / 'sm8550-overlay' / path).read_bytes())
             self.assertTrue(os.access(root / path, os.X_OK))
@@ -269,6 +309,32 @@ post
         dropin = root / 'usr/lib/systemd/system/konkr-sleep.service.d/50-pocket-evo.conf'
         self.assertIn('ExecStart=\nExecStart=/usr/lib/pocketevo/pocket-evo-sleep pre', dropin.read_text())
         self.assertIn('ExecStop=\nExecStop=/usr/lib/pocketevo/pocket-evo-sleep post', dropin.read_text())
+
+    def test_evo_internal_keyboard_does_not_toggle_inputplumber_targets(self):
+        helper = REPO / 'steamos-overlay/usr/lib/steamos/sm8550-inputplumber-ext-hid'
+        source = helper.read_text().split('pocket_evo() {', 1)[1].split('\ncomposite_ids()', 1)[0]
+        source = 'pocket_evo() {' + source
+        dt = self.root / 'compatible'
+        source = source.replace('/proc/device-tree/compatible', str(dt))
+        for board in ('ayaneo,pocketevo', 'ayaneo,pocketevo-other', 'ayn,odin2'):
+            dt.write_bytes(board.encode() + b'\0qcom,sm8550\0')
+            for prefix in ('ID_', 'ID_USB_'):
+                for vendor, product in (('1c4f', '0002'), ('1c4f', '0003'), ('abcd', '0002')):
+                    props = f'{prefix}VENDOR_ID={vendor}\n{prefix}MODEL_ID={product}\nID_BUS=usb\nID_INPUT_KEYBOARD=1'
+                    result = subprocess.run(['bash', '-c', source +
+                        '\nis_virtual_or_deck "$1" "$2"', 'probe', props, 'AYANEO DEVICE'],
+                        capture_output=True, text=True, timeout=5)
+                    internal = board == 'ayaneo,pocketevo' and (vendor, product) == ('1c4f', '0002')
+                    self.assertEqual(result.returncode, 0 if internal else 1, result.stderr)
+
+    def test_common_direct_evo_call_also_leaves_ufs_bound(self):
+        source, driver, state = self.ufs_fixture(['ayaneo,pocketevo'], SHARED_SLEEP)
+        result = subprocess.run(['bash', '-c', source + '\nufs_off; ufs_on'],
+                                env=self.env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(state.exists())
+        self.assertEqual((driver / 'unbind').read_text(), 'untouched\n')
+        self.assertEqual((driver / 'bind').read_text(), 'untouched\n')
 
     def test_other_boards_keep_ufs_detach_and_rebind(self):
         # Same GPU/SoC is insufficient to opt a different board out; the

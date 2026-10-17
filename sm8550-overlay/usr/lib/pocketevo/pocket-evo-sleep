@@ -210,6 +210,7 @@ pre() {
   local n u
   report_start
   step wifi_mark
+  step /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-usb-sleep pre || log "usb: preparation incomplete"
   if light; then
     sync
     u=$(step ufs_off)
@@ -245,13 +246,21 @@ touch_on() {
 }
 
 post() {
+  local usb_status=restored
   report_end
   step ufs_on
-  step /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-controller
+  # Re-enumerate the USB host before the existing bounded MCU-mode recovery.
+  # A failed host bind must not trigger UART mode changes; retry next post/pre.
+  if step /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-usb-sleep post; then
+    step /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-controller
+  else
+    usb_status=pending
+    log "usb: recovery pending; skipping MCU mode change"
+  fi
   if light; then
     step wifi_watch_start
     systemctl kill -s HUP konkrd.service >/dev/null 2>&1
-    log "post: restored"
+    log "post: restored; usb=$usb_status"
     return
   fi
   step touch_on
@@ -264,7 +273,7 @@ post() {
   step audio 0
   # konkrd re-applies profile clocks/LEDs on SIGHUP
   systemctl kill -s HUP konkrd.service >/dev/null 2>&1
-  log "post: restored"
+  log "post: restored; usb=$usb_status"
 }
 
 # Other boards retain the unmodified upstream hook, including all arguments.

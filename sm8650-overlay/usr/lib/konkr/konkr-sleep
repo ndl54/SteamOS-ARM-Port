@@ -125,6 +125,8 @@ ufs_in_use() {  # $1 = ufshc platform device name
   return 1
 }
 ufs_off() {
+  # Direct common callers must obey the same EVO policy as its service drop-in.
+  tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo' && return 0
   local host name
   mkdir -p "${UFS_STATE%/*}"; : >"$UFS_STATE"
   for host in /sys/bus/platform/drivers/ufshcd-qcom/*.ufshc; do
@@ -141,12 +143,25 @@ ufs_off() {
   [[ -s $UFS_STATE ]] && echo "$(tr '\n' ' ' <"$UFS_STATE")"
 }
 ufs_on() {
+  tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo' && return 0
   local name
   [[ -s $UFS_STATE ]] || return 0
   while read -r name; do
     echo "$name" >/sys/bus/platform/drivers/ufshcd-qcom/bind 2>/dev/null || log "ufs: rebind $name failed"
   done <"$UFS_STATE"
   rm -f "$UFS_STATE"
+}
+
+# a40ab4c: the EVO pad's Renesas host needs a fresh probe after s2idle.
+# Share the board-gated, ownership-aware implementation with the EVO drop-in.
+# Other boards must retain their existing USB/storage policy.
+xhci_off() {
+  tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo' || return 0
+  /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-usb-sleep pre
+}
+xhci_on() {
+  tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo' || return 0
+  /usr/bin/python3 /usr/lib/pocketevo/pocket-evo-usb-sleep post
 }
 
 # 8 Gen 3 on our 7.2 kernel: the kernel itself handles Wi-Fi, audio graphs,
@@ -166,13 +181,14 @@ wifi_mark() { /usr/lib/steamos-arm/steamos-arm-wifi-wake mark; }
 wifi_watch_start() { /usr/lib/steamos-arm/steamos-arm-wifi-wake start; }
 
 pre() {
-  local n u
+  local n u x
   report_start
   wifi_mark
+  x=$(xhci_off)
   if light; then
     sync
     u=$(ufs_off)
-    log "pre: kernel handles the devices, ufs unbound=${u:-none}"
+    log "pre: kernel handles the devices, ufs unbound=${u:-none}${x:+, usb unbound=$x}"
     return
   fi
   audio 1
@@ -183,7 +199,7 @@ pre() {
   fi
   sync
   u=$(ufs_off)
-  log "pre: audio suspended, touch unbound=$n, wifi=$([[ -d /sys/module/${WIFI_MODS[0]} ]] && echo loaded || echo unloaded), ufs unbound=${u:-none}"
+  log "pre: audio suspended, touch unbound=$n, wifi=$([[ -d /sys/module/${WIFI_MODS[0]} ]] && echo loaded || echo unloaded), ufs unbound=${u:-none}${x:+, usb unbound=$x}"
 }
 
 touch_devices() {  # chipone panels on any I2C bus, bound or not
@@ -206,6 +222,7 @@ touch_on() {
 post() {
   report_end
   ufs_on
+  xhci_on
   wifi_watch_start
   if light; then
     systemctl kill -s HUP konkrd.service >/dev/null 2>&1

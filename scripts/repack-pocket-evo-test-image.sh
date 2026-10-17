@@ -125,6 +125,7 @@ files = [
  'usr/lib/konkr/konkr-sleep',
  'usr/lib/pocketevo/pocket_evo_led.py',
  'usr/lib/pocketevo/pocket-evo-sleep',
+ 'usr/lib/pocketevo/pocket-evo-usb-sleep',
  'usr/lib/pocketevo/pocket-evo-wifi-wake',
  'usr/lib/systemd/system/konkr-sleep.service.d/50-pocket-evo.conf',
  'usr/lib/systemd/system/pocket-evo-led.service',

@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""EVO Renesas s2idle workaround (upstream a40ab4c), with owned recovery.
+
+Never detach a host with storage, even unmounted storage: this also protects
+swap, device-mapper, mount namespaces and filesystems mounted by UUID. Only
+hosts detached here may be rebound. No module reload or input service restart.
+"""
+import fcntl
+import os
+from pathlib import Path
+import re
+import sys
+import time
+
+SYS = Path('/sys')
+STATE = Path('/run/pocketevo/xhci-unbound')
+COMPATIBLE = Path('/proc/device-tree/compatible')
+BDF = re.compile(r'[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]')
+
+
+def log(message):
+    print(f'pocket-evo-usb-sleep: {message}', file=sys.stderr)
+
+
+class Hosts:
+    def __init__(self, sysfs=SYS, state=STATE, delay=time.sleep):
+        self.sys = sysfs
+        self.state = state
+        self.driver = sysfs / 'bus/pci/drivers/xhci-pci-renesas'
+        self.devices = sysfs / 'bus/pci/devices'
+        self.delay = delay
+
+    def load(self):
+        try:
+            names = self.state.read_text().splitlines()
+        except FileNotFoundError:
+            return set()
+        if any(not BDF.fullmatch(name) for name in names):
+            raise ValueError('invalid ownership file; refusing USB operations')
+        return set(names)
+
+    def save(self, owned):
+        # An interrupted write must not truncate the previous recovery list.
+        temp = self.state.with_suffix('.tmp')
+        temp.write_text(''.join(name + '\n' for name in sorted(owned)))
+        temp.replace(self.state)
+
+    def storage(self, device):
+        host = device.resolve(strict=True)
+        # Class/block includes partitions and non-sd block transports too.
+        for block in (self.sys / 'class/block').iterdir():
+            if host in block.resolve(strict=True).parents:
+                return True
+        # Catch USB mass-storage before its block disk has finished probing.
+        for interface in (self.sys / 'bus/usb/devices').iterdir():
+            if host not in interface.resolve(strict=True).parents:
+                continue
+            kind = interface / 'bInterfaceClass'
+            if kind.exists() and kind.read_text().strip().lower() == '08':
+                return True
+        return False
+
+    def write(self, action, name):
+        (self.driver / action).write_text(name + '\n')
+
+    def restore(self, owned):
+        for name in sorted(owned.copy()):
+            device = self.devices / name
+            for attempt in range(3):
+                try:
+                    if not device.exists():
+                        raise OSError('PCI device absent')
+                    bound = device / 'driver'
+                    if bound.is_symlink():
+                        if bound.resolve() != self.driver.resolve():
+                            raise OSError('device now owned by another driver')
+                    else:
+                        self.write('bind', name)
+                        if not bound.is_symlink() or bound.resolve() != self.driver.resolve():
+                            raise OSError('bind did not attach the driver')
+                    self.save(owned - {name})
+                    owned.remove(name)
+                    break
+                except OSError as error:
+                    if attempt == 2:
+                        log(f'{name}: recovery pending: {error}')
+                    else:
+                        self.delay(0.1)
+        return not owned
+
+    def run(self, action):
+        owned = self.load()
+        # Retain/retry a failed post even if another pre follows it.
+        recovered = self.restore(owned)
+        if action == 'post':
+            return recovered
+        ok = recovered
+        if not self.driver.exists():
+            return ok
+        for device in sorted(self.driver.iterdir()):
+            name = device.name
+            if not BDF.fullmatch(name) or name in owned:
+                continue
+            try:
+                if self.storage(device):
+                    log(f'{name}: storage attached; leaving host bound')
+                    continue
+                # Journal intent while the host is still ours. A crash after
+                # unbind must leave enough information for the next invocation.
+                owned.add(name)
+                self.save(owned)
+                self.write('unbind', name)
+                log(f'{name}: detached for sleep')
+            except OSError as error:
+                # Keep intent if unbind may have completed; restore checks the
+                # actual driver and never steals a device from another driver.
+                log(f'{name}: preparation incomplete: {error}')
+                ok = False
+        return ok
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in ('pre', 'post'):
+        return 2
+    try:
+        if b'ayaneo,pocketevo' not in COMPATIBLE.read_bytes().split(b'\0'):
+            return 0
+    except OSError:
+        return 0
+    try:
+        os.umask(0o077)
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        with STATE.with_suffix('.lock').open('a') as lock:
+            # Concurrent duplicate hooks must not overwrite ownership state.
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return 0 if Hosts().run(sys.argv[1]) else 1
+    except (OSError, ValueError) as error:
+        log(str(error))
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

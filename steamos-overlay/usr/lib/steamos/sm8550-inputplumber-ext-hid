@@ -10,8 +10,18 @@ exec 9>"$LOCK"
 flock 9
 sleep 0.35
 
+pocket_evo() {
+  tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -qx 'ayaneo,pocketevo'
+}
+
 is_virtual_or_deck() {
   local props="$1" name="$2"
+  # EVO's built-in AYANEO DEVICE is a composite source, including a keyboard
+  # interface. Re-enumerating its Renesas host must not toggle virtual targets.
+  if pocket_evo && printf '%s\n' "$props" | grep -qE '^ID_(USB_)?VENDOR_ID=1c4f$' \
+    && printf '%s\n' "$props" | grep -qE '^ID_(USB_)?MODEL_ID=0002$'; then
+    return 0
+  fi
   case "$name" in
     InputPlumber*|*"Valve Steam Deck"*|*Gamepad*|*Motion*) return 0 ;;
   esac
