@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = (REPO / 'scripts/mk-tb321fu-flash-images.sh').read_text()
+SCRIPT = (REPO / 'scripts/mk-tablet-flash-images.sh').read_text()
 CLEANUP = SCRIPT[SCRIPT.index('cleanup() {'):SCRIPT.index('trap cleanup EXIT')]
 
 
@@ -107,7 +107,7 @@ printf '\\n%s' "$TB321FU_DISABLE_RESERVED"
                 entry = entry.replace('$' + key, value)
             menu += entry + '\n'
         sed = re.search(r'sed -i (.*?) "\$f"', SCRIPT, re.S).group(1)
-        awk = SCRIPT.split("awk '\n", 1)[1].split("\n' \"$S/", 1)[0]
+        awk = re.search(r"awk '\n(.*?)\n\s*' \"\$S/", SCRIPT, re.S).group(1)
         rewritten = subprocess.run(['bash', '-c', 'sed ' + sed], input=menu,
                                    capture_output=True, text=True, check=True).stdout
         output = subprocess.run(['awk', awk], input=rewritten,
