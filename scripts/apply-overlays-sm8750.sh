@@ -235,6 +235,20 @@ do
   ln -sfn /dev/null "$R/etc/systemd/system/${svc}"
 done
 
+# No Deck A/B boot bookkeeping or EFI partitions on these layouts. Repart
+# must not consume the free space reserved for expand-home or alter tablet UFS.
+# The initramfs mounts the persistent /etc overlay before systemd reads units;
+# an old upper unit can hide a mask written only to the base /etc.
+for etc in "$R/etc" "$R/var/lib/overlays/etc/upper"; do
+  [[ -d "$etc" ]] || continue
+  mkdir -p "$etc/systemd/system"
+  for svc in steamos-boot.service efi.mount esp.mount systemd-repart.service; do
+    rm -f "$etc/systemd/system/multi-user.target.wants/${svc}" \
+          "$etc/systemd/system/default.target.wants/${svc}"
+    ln -sfn /dev/null "$etc/systemd/system/${svc}"
+  done
+done
+
 # Set boot target to graphical.target (SDDM autologin into Gamescope)
 mkdir -p "$R/etc/systemd/system"
 ln -sfn /usr/lib/systemd/system/graphical.target "$R/etc/systemd/system/default.target"
