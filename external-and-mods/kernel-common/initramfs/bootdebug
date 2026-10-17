@@ -13,6 +13,45 @@ out=/boot/debug-logs
 # Low priority for CPU and disk, so a game running meanwhile doesn't stutter.
 renice -n 19 -p $$ >/dev/null 2>&1
 ionice -c 3 -p $$ >/dev/null 2>&1
+
+# steamos.screenlog=1 (a debug boot.img for devices with no FAT partition
+# and no working USB host, like the Legion Y700 Gen 4): 75 s after this
+# service starts, stop the login manager so the text console gets the panel
+# back, and keep a report on screen for a photo. This ends Game Mode;
+# only the exact opt-in below enables it.
+screen_pid=
+if grep -qE '(^|[[:space:]])steamos[.]screenlog=1([[:space:]]|$)' /proc/cmdline; then
+  (
+    # Do not end Game Mode if there is no writable virtual console.
+    [ -c /dev/tty1 ] || exit 0
+    exec </dev/null >/dev/tty1 2>&1
+    sleep 75
+    systemctl stop display-manager.service 2>/dev/null
+    sleep 3
+    chvt 1 2>/dev/null
+    TERM=linux setterm --blank 0 --powerdown 0 --cursor off 2>/dev/null
+    while :; do
+      printf '\033[2J\033[H'
+      {
+        echo "=== SteamOS ARM debug report, uptime $(cut -d' ' -f1 /proc/uptime)s: take a photo ==="
+        echo "--- firmware copy"
+        journalctl -b --no-pager -o cat -u steamos-arm-tablet-firmware.service | tail -n 14
+        echo "--- GPU"
+        journalctl -b -k --no-pager -o cat | grep -iE 'adreno|a8xx|a7xx|zap|gmu|msm_dpu|msm_drm|drm.*(error|fail)' | tail -n 16
+        echo "--- Game Mode"
+        journalctl -b --no-pager -o cat _UID=1000 | grep -iE 'gamescope|vulkan|vk_|drm|error|fail|fatal|crash' | grep -viE 'steamwebhelper|cef' | tail -n 30
+        echo "--- failed units"
+        systemctl --failed --no-pager --no-legend --plain 2>/dev/null | awk '{printf "%s ", $1}'; echo
+        echo "--- panel"
+        for c in /sys/class/drm/card*-*; do [ -e "$c/status" ] && echo "${c##*/} $(cat "$c/status") $(head -3 "$c/modes" 2>/dev/null | tr '\n' ' ')"; done
+      } 2>&1 | cut -c1-118
+      sleep 30
+    done
+  ) &
+  screen_pid=$!
+fi
+
+collect_logs() {
 mountpoint -q /boot || mount /boot 2>/dev/null
 # Some images mount BOOT read-only (the 8 Elite ones); the logs need it
 # writable, whichever unit started us.
@@ -187,3 +226,14 @@ done
 runtime_evidence
 [ "$pocket_evo" != 1 ] || echo "all capture done, $(date)" > "$out/DONE.txt"
 sync
+}
+
+if [ -n "$screen_pid" ]; then
+  # Keep the service's main process alive even if the file destination fails.
+  # The collector's exit/USB cleanup traps must finish before waiting for the
+  # screen worker, which deliberately runs until the service is stopped.
+  ( collect_logs )
+  wait "$screen_pid"
+else
+  collect_logs
+fi
