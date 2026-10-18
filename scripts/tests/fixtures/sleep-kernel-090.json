@@ -1,0 +1,430 @@
+{
+  "linux": [
+    [
+      "7.1.2",
+      "drivers/gpu/drm/msm/dsi/phy/dsi_phy.c",
+      "93d2755c718b12db3997c1a0b8b7b1155e51e7f46eaf8ccce1fed7f1a2a08627"
+    ],
+    [
+      "7.1.2",
+      "drivers/gpu/drm/msm/dsi/phy/dsi_phy.h",
+      "363da5960ce9525d11e87097925f6440a21cde6891dd14dad0c4a5226f120b66"
+    ],
+    [
+      "7.1.2",
+      "drivers/hwmon/pwm-fan.c",
+      "bb4783487bd6404dde9955a87244859b79e19d410ddf865184d2094f59b4fb20"
+    ],
+    [
+      "7.1.2",
+      "drivers/input/misc/pm8941-pwrkey.c",
+      "2b28b7605514436427c7fbb72a57e271a2e3673ea2c9e73f26576df6b64f9029"
+    ],
+    [
+      "7.1.2",
+      "drivers/leds/leds-htr3212.c",
+      null
+    ],
+    [
+      "7.1.2",
+      "drivers/power/supply/qcom_battmgr.c",
+      "e8841eb42094abd8abfd627d90fc31cb2ea958e93442ef94c856b7f6f7a426cd"
+    ],
+    [
+      "7.1.2",
+      "drivers/usb/dwc3/host.c",
+      "731b83b21292ff263faf4f1f2f2177f740ade63543dcad004521fc3146211508"
+    ],
+    [
+      "7.1.2",
+      "drivers/usb/host/xhci-plat.c",
+      "f631d6b9215dad476c992ac39d91bdc0b3dffd88f3d9d22738654a9a95ca3f77"
+    ],
+    [
+      "7.1.2",
+      "sound/soc/codecs/lpass-rx-macro.c",
+      "86a4d166872aaa98db487092abef00dbb6fa0fd589949fa14bd0bda838cf8622"
+    ],
+    [
+      "7.1.2",
+      "sound/soc/codecs/lpass-tx-macro.c",
+      "ead411a50f238a3424d4a51fd83b8404d4b0e048f4b976946a824680a065471e"
+    ],
+    [
+      "7.1.2",
+      "sound/soc/codecs/lpass-va-macro.c",
+      "5f4fe115adbccb99f6f56bbd42d8376f87f1e63811993f1e6816d82a16c86562"
+    ],
+    [
+      "7.1.2",
+      "sound/soc/codecs/lpass-wsa-macro.c",
+      "8636964acd1e1d2c9c1691dfa005c417efa5d4085268e6217396618ca133ce35"
+    ],
+    [
+      "7.1.2",
+      "sound/soc/codecs/wsa884x.c",
+      "1a642229730fb47c69013df93aef3bf7b11d8ea672925e6d8fa5e551a1f630e3"
+    ],
+    [
+      "7.2",
+      "drivers/gpu/drm/msm/dsi/phy/dsi_phy.c",
+      "9d14054f80097398bb333cf739340ae1d06cf496da5ba7e7bd00c4c1a5608e95"
+    ],
+    [
+      "7.2",
+      "drivers/gpu/drm/msm/dsi/phy/dsi_phy.h",
+      "11fe5c856ec083d3fd277a2eaa38244cb60fc8116848379ab3f3c7156a986f3b"
+    ],
+    [
+      "7.2",
+      "drivers/hwmon/pwm-fan.c",
+      "c9dcc56269bb840a3cae991a4e091f527d81cc4a8e65233518872f2aa82d324b"
+    ],
+    [
+      "7.2",
+      "drivers/input/misc/pm8941-pwrkey.c",
+      "2b28b7605514436427c7fbb72a57e271a2e3673ea2c9e73f26576df6b64f9029"
+    ],
+    [
+      "7.2",
+      "drivers/leds/leds-htr3212.c",
+      null
+    ],
+    [
+      "7.2",
+      "drivers/power/supply/qcom_battmgr.c",
+      "e8841eb42094abd8abfd627d90fc31cb2ea958e93442ef94c856b7f6f7a426cd"
+    ],
+    [
+      "7.2",
+      "drivers/usb/dwc3/host.c",
+      "731b83b21292ff263faf4f1f2f2177f740ade63543dcad004521fc3146211508"
+    ],
+    [
+      "7.2",
+      "drivers/usb/host/xhci-plat.c",
+      "f631d6b9215dad476c992ac39d91bdc0b3dffd88f3d9d22738654a9a95ca3f77"
+    ],
+    [
+      "7.2",
+      "sound/soc/codecs/lpass-rx-macro.c",
+      "86a4d166872aaa98db487092abef00dbb6fa0fd589949fa14bd0bda838cf8622"
+    ],
+    [
+      "7.2",
+      "sound/soc/codecs/lpass-tx-macro.c",
+      "399cb09be43bd2ee5792dad6b703b0e3620b1256a0d2337494180e87470973e9"
+    ],
+    [
+      "7.2",
+      "sound/soc/codecs/lpass-va-macro.c",
+      "d92a4a152807f297920e34495431edef80d3f3739b310d37db2aa99b7c05cc67"
+    ],
+    [
+      "7.2",
+      "sound/soc/codecs/lpass-wsa-macro.c",
+      "75feb630d5cad3be34f46028ea6bcedef4a30a2467e6d458859ed2408fb39f75"
+    ],
+    [
+      "7.2",
+      "sound/soc/codecs/wsa884x.c",
+      "1a642229730fb47c69013df93aef3bf7b11d8ea672925e6d8fa5e551a1f630e3"
+    ],
+    [
+      "7.2.8",
+      "drivers/gpu/drm/msm/dsi/phy/dsi_phy.c",
+      "9d14054f80097398bb333cf739340ae1d06cf496da5ba7e7bd00c4c1a5608e95"
+    ],
+    [
+      "7.2.8",
+      "drivers/gpu/drm/msm/dsi/phy/dsi_phy.h",
+      "5e94636e9f63c21841660d2d77864b4f861dad254d893854a3096c5c89ebd8ef"
+    ],
+    [
+      "7.2.8",
+      "drivers/hwmon/pwm-fan.c",
+      "a2f664d34707c0d87f22d61032518ed393f38d34c51b665084b2c97812662b7b"
+    ],
+    [
+      "7.2.8",
+      "drivers/input/misc/pm8941-pwrkey.c",
+      "2b28b7605514436427c7fbb72a57e271a2e3673ea2c9e73f26576df6b64f9029"
+    ],
+    [
+      "7.2.8",
+      "drivers/leds/leds-htr3212.c",
+      null
+    ],
+    [
+      "7.2.8",
+      "drivers/power/supply/qcom_battmgr.c",
+      "832ffd8e386533f51a8325ef8736dbf9d5bf29abf2d97c17b764f1b427636d40"
+    ],
+    [
+      "7.2.8",
+      "drivers/usb/dwc3/host.c",
+      "731b83b21292ff263faf4f1f2f2177f740ade63543dcad004521fc3146211508"
+    ],
+    [
+      "7.2.8",
+      "drivers/usb/host/xhci-plat.c",
+      "f631d6b9215dad476c992ac39d91bdc0b3dffd88f3d9d22738654a9a95ca3f77"
+    ],
+    [
+      "7.2.8",
+      "sound/soc/codecs/lpass-rx-macro.c",
+      "86a4d166872aaa98db487092abef00dbb6fa0fd589949fa14bd0bda838cf8622"
+    ],
+    [
+      "7.2.8",
+      "sound/soc/codecs/lpass-tx-macro.c",
+      "399cb09be43bd2ee5792dad6b703b0e3620b1256a0d2337494180e87470973e9"
+    ],
+    [
+      "7.2.8",
+      "sound/soc/codecs/lpass-va-macro.c",
+      "d92a4a152807f297920e34495431edef80d3f3739b310d37db2aa99b7c05cc67"
+    ],
+    [
+      "7.2.8",
+      "sound/soc/codecs/lpass-wsa-macro.c",
+      "75feb630d5cad3be34f46028ea6bcedef4a30a2467e6d458859ed2408fb39f75"
+    ],
+    [
+      "7.2.8",
+      "sound/soc/codecs/wsa884x.c",
+      "1a642229730fb47c69013df93aef3bf7b11d8ea672925e6d8fa5e551a1f630e3"
+    ]
+  ],
+  "rocknix": {
+    "20260801": {
+      "revision": "3b9cb1f6bf48ee9ca0cf01edd9af52ca2a6b73fb",
+      "patches": {
+        "packages/linux/patches/default/linux-062-imon_pad_ignore_diagonal.patch": "677de3ed7f07b7fae231029ea5b9349817381612",
+        "packages/linux/patches/default/linux-999.02-0001-pm-disable-async-suspend-resume-by-default.patch": "16ac49bee6828170f9843603dc911a7cccd2c1bf",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0001-pcie-update-sm8550-dtsi.patch": "c30b4323a8c32adcf74ab44bfd138ebe614e6ccc",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0002-qcom-dispcc-sm8550-Fix-disp_cc_mdss_mdp_clk_src.patch": "5d3fd30141544f503d8eb357f6b3be27860ff188",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0004-drm-msm-a6xx-Enable-IFPC-on-Adreno-740.patch": "7743f91d63be05a43d74a4d3f401174b33749f8d",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0006-add-hw_params-callback-function-to-drm_connector_hdmi_audio_ops.patch": "a87ccd1bccf2cd09e0aa1be0a1ac853776bf8be2",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0015-touchscreen-edt-ft5x06-allow-to-override-input-name.patch": "80e4032466459fb1bde4bb01e41fdd711ef05bbf",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0030-input-rmi4-add-reset-gpio.patch": "658d66214d7869d529bad2eaf763c862ae13abe0",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0031_input--Add-driver-for-RSInput-Gamepad.patch": "0e490d1c75a86f35582fdce09afcc346b6d9380d",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0032-rmi4-silence-spam-irq-errors.patch": "dda95661172673d863dbf5e3a8e3aa09cecd00d8",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0033_leds--Add-driver-for-HEROIC-HTR3212.patch": "81436e0e0e3328836ef1ced5baec558e339e4544",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0036_ASoC--qcom--sc8280xp-Add-support-for-Primary-I2S.patch": "289c05cc7e2bbe5af82c78c03c0a30034565910b",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0047_ASoC--codecs--aw88166--AYN-Odin2-Specific-modifica.patch": "0f085ddbdc1ce9c5102542c90cf093fa5d0d4d05",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0051-gpu-panel-add-Pocket-ACE-panel-driver.patch": "45efe044518fc264977aa8e2c55e6bbe67934995",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0052-gpu-panel-add-Pocket-DMG-panel-driver.patch": "9abb7be3015ec3c3cfa93b43bbe985f82845c9ab",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0053-edt-ft5x06-add-no_regmap_bulk_read-option.patch": "887bdb6576b0dcd6bec2de32ebeae02fb379e5ea",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0053-gpu-panel-add-Pocket-DS-lower-panel-driver.patch": "8e6c62c95bccf067151d9001d9d20494cf43b858",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0054-input-goodix-override-resolution-from-dt.patch": "b3feb8da6d9c00528067e87bfa37f5868885df79",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0054_sn3112-pwm-driver.patch": "41c0b8c3403055b2b54082e2b71c100589c3aea1",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0055_Synaptics-TD4328-LCD-panel.patch": "5b80fb524b352ab647635a24e56a150278a824db",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0056_Xm-Plus-XM91080G-panel.patch": "fc2f36015bc3de368caf5d33dbd7ded554f24bd1",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0057_Chipone-ICNA35XX-panel.patch": "ac2961f8231d6e085462f33ac0fb338c24bfec2f",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0057_DDIC-CH13726A-panel.patch": "c94d9a89cb4edbf4865cd158932daaf7a8a03187",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0058_AYN-Odin2-Mini--backlight.patch": "db3a77304c017abcc1ca798aa065a9848e1cb530",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0059_AYN-Odin2-Mini--hynitron--cstxxx.patch": "8fb4425af44169226e72ddb449042135a9e9ee71",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0060-Add-Silergy-SY7758-backlight-driver.patch": "17d0b4fc493bc171773f8c501dea5495896c1945",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0060-input-touchscreen-add-synaptics-dsx-driver.patch": "a4a1de5546268d2dc40a00c8868e551394153e88",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0060-input-touchscreen-add-synaptics-dsx-kconfig.patch": "99dea6738a209ead0d0b5dd7e069caeefbcb5de6",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0061-regulator-add-sgm3804-i2c-regulator-for-panel-power-.patch": "7dd7a4be23c2206a8007db9039bc66effdaba3fb",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0062-gpu-drm-panel-add-wt0630-panel.patch": "2b07a71d2f0a0c881bdce04bb4a718e9a7b5148a",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0063-gpu-drm-panel-add-wt0600-1k-panel.patch": "0f1e5e4a0fa8bce562cd78d623513590b88c4b0e",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0071-HACK-fix-usb-boot-hang.patch": "601aecb47f97855771b2988766f551c9e62aebde",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0101-v3_20260219_webgeek1234_arm64_qcom_sm8550_add_ddr_llcc_l3_cpu_bandwidth_scaling.patch": "a876f76436bd5fbb3bcc4ecd3038c1a416c07f02",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0104-drm-panel-Add-Retroid-Pocket-6-panel.patch": "c94584f0d2c029144571a45c8cbeb670878f0ae7",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0105-drm-panel-Add-Retroid-Pocket-Nova-panel.patch": "03cf9648e99bf768d6ea58008ca5fb0b7d44d915",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0120-20250728_konradybcio_gpu_cc_power_requirements_reality_check.patch": "4f961968095323763c08c7f033aa8b0a7481af3b",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0121-pmdomain-qcom-rpmhpd-no-max-clamp-on-gmu-rails.patch": "8b37f6fee76ed171218c0179b82c3b5c83564cb8",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0122-interconnect__qcom__sm8550__Enable_QoS_configuration.patch": "2f37fd238e91b897edfd4e0a0fdc9649d2e3aada",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0200-ASoC-wcd938x-add-DMIC-DAPM-inputs.patch": "7e211f8ff4ef36da7370b44163d938ce93d69e84",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0500-ROCKNIX-set-boot-fanspeed.patch": "8abc9dca03eb4be787b2c7dfa7e94b31d325ba22",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0501-ROCKNIX-fix-wifi-and-bt-mac.patch": "fe227e821453f9fd5fa44f32ad83bf973f3aa35b",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0503-ROCKNIX-battery-name.patch": "730d7565dee920b5f691aa7c6bfd576f61050ef9",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0504-Enable-64-bit-processes-to-use-compat-input-syscalls.patch": "341014c1a9796bfa818e522f96a5add8cb700335",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0505-msm_gem-lock-before-put_iova_spaces.patch": "88b1cdc644b54e7b7d650bf17416b1cc873c0283",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0506-usbcore-add-interrupt-interval-override.patch": "eb99eb816befd4e429acce701b7fae490e0a0a7f",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch": "57087b0fbc0459efe63962ee7d7397ea5c823443",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1000-add-qcom-haptics-driver.patch": "a59b4e10306b38103339bb9225b1dc58b4947cb9",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1002-haptics-driver-support-periodic-sine-and-fixes.patch": "fe962bee891ddaa91dadf9a2c269aac3b74f5618",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1003-rsinput-add-ff.patch": "06f3ddb3ee20f4d7a09671ccc897b401ac3c97c0",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/20260424_neil_armstrong_arm64_dts_qcom_sm8_456_50_add_missing_cx_power_domain_to_gcc.patch": "71abf08f943fdee2f00ae8c6b7d5ce6b8a3fc32c",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/v6_20260210_quic_utiwari_crypto_qce_add_runtime_pm_and_interconnect_bandwidth_scaling_support.patch": "0708b8ce404cc0fa3edd78ff73b9803bbc290be4",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0001-pcie-update-sm8650-dtsi.patch": "4d4718e4d21782ef1349702b4220885d5df332d2",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0006-add-hw_params-callback-function-to-drm_connector_hdmi_audio_ops.patch": "a87ccd1bccf2cd09e0aa1be0a1ac853776bf8be2",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0007-audioreach-Add-dedicated-WSA2-support.patch": "953a4b2e1a73e93e32c0b349b5b5f2a951d21793",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0060-Add-Silergy-SY7758-backlight-driver.patch": "6ca393d1df4ebe8c4a3d0c4eb6536e5d0b568b84",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0061-regulator-add-sgm3804-i2c-regulator-for-panel-power-.patch": "7dd7a4be23c2206a8007db9039bc66effdaba3fb",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0062-gpu-drm-panel-add-wt0630-panel.patch": "2b07a71d2f0a0c881bdce04bb4a718e9a7b5148a",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0063-gpu-drm-panel-add-pocket-fit-panel.patch": "3cbc3f3a9b44566dd5079d73d26113a0f135f691",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0071-HACK-fix-usb-boot-hang.patch": "601aecb47f97855771b2988766f551c9e62aebde",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0500-ROCKNIX-set-boot-fanspeed.patch": "8abc9dca03eb4be787b2c7dfa7e94b31d325ba22",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0501-ROCKNIX-fix-wifi-and-bt-mac.patch": "fe227e821453f9fd5fa44f32ad83bf973f3aa35b",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0503-ROCKNIX-battery-name.patch": "730d7565dee920b5f691aa7c6bfd576f61050ef9",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0504-Enable-64-bit-processes-to-use-compat-input-syscalls.patch": "341014c1a9796bfa818e522f96a5add8cb700335",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0505-msm_gem-lock-before-put_iova_spaces.patch": "88b1cdc644b54e7b7d650bf17416b1cc873c0283",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0506-usbcore-add-interrupt-interval-override.patch": "eb99eb816befd4e429acce701b7fae490e0a0a7f",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/20260424_neil_armstrong_arm64_dts_qcom_sm8_456_50_add_missing_cx_power_domain_to_gcc.patch": "71abf08f943fdee2f00ae8c6b7d5ce6b8a3fc32c",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/v2_20260420_neil_armstrong_arm64_qcom_sm8650_misc_enhancements.patch": "9338519e3975eaa064bd8ac4874951f8ea77163d",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/v6_20260210_quic_utiwari_crypto_qce_add_runtime_pm_and_interconnect_bandwidth_scaling_support.patch": "0708b8ce404cc0fa3edd78ff73b9803bbc290be4",
+        "projects/ROCKNIX/packages/linux/patches/7.0/0010-msm-resource-cleanup.patch": "185aa255bb60ad32c35631740f877804072d99e7",
+        "projects/ROCKNIX/packages/linux/patches/7.0/9998-silence-initramfs-unpack-warn.patch": "026040a13c24a3428bcc8b7b96ac64f3b1d2f908",
+        "projects/ROCKNIX/packages/linux/patches/7.0/9999-fix-rust-build-error.patch": "d0a40ba1006f258b79bdbc0e1e90e970dc2fb59c",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0002-input-add-input-polldev-driver.patch": "e97f4ce49d3b99f831505dcddf946c956f168a3e",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0003-pwm-add-pwm_set_period.patch": "97daeee5ad86509588ed2d6393c8df5774623a03",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0004-input-adc-keys-redirect-keycode-316-to-rocknix-joypa.patch": "6cdd6bced2d98c6ae73b4b0f130d5f7871a18727",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0005-Bluetooth-btrtl-Add-the-support-for-RTL8733BU.patch": "17b9081fe239d7dcd780d235597d2008b7e509d2",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0006-hid-playstation-expose-DualSense-Edge-Fn-and-back-paddles.patch": "f20e0876f9870607cfadeb0d95bd1a3a7b594461"
+      }
+    },
+    "20260901": {
+      "revision": "1ebff24f36501fb6493beb2bf83bf2604536d9aa",
+      "patches": {
+        "packages/linux/patches/default/0062-imon-pad-ignore-diagonal.patch": "f33bf9da4f1845f82b0f552062306fdf5052121a",
+        "packages/linux/patches/default/9900-i915-10bit-hack.patch": "45277659e15975a75b45365508fbc43723401258",
+        "packages/linux/patches/default/9901-pm-disable-async-suspend-resume-by-default.patch": "8e9adceccd530bdf73658c425c675cabfae6caca",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0001-pcie-update-sm8550-dtsi.patch": "c30b4323a8c32adcf74ab44bfd138ebe614e6ccc",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0002-qcom-dispcc-sm8550-Fix-disp_cc_mdss_mdp_clk_src.patch": "5d3fd30141544f503d8eb357f6b3be27860ff188",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0004-drm-msm-a6xx-Enable-IFPC-on-Adreno-740.patch": "7743f91d63be05a43d74a4d3f401174b33749f8d",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0006-add-hw_params-callback-function-to-drm_connector_hdmi_audio_ops.patch": "a87ccd1bccf2cd09e0aa1be0a1ac853776bf8be2",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0015-touchscreen-edt-ft5x06-allow-to-override-input-name.patch": "80e4032466459fb1bde4bb01e41fdd711ef05bbf",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0030-input-rmi4-add-reset-gpio.patch": "658d66214d7869d529bad2eaf763c862ae13abe0",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0031_input--Add-driver-for-RSInput-Gamepad.patch": "0e490d1c75a86f35582fdce09afcc346b6d9380d",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0032-rmi4-silence-spam-irq-errors.patch": "dda95661172673d863dbf5e3a8e3aa09cecd00d8",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0033_leds--Add-driver-for-HEROIC-HTR3212.patch": "81436e0e0e3328836ef1ced5baec558e339e4544",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0036_ASoC--qcom--sc8280xp-Add-support-for-Primary-I2S.patch": "289c05cc7e2bbe5af82c78c03c0a30034565910b",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0047_ASoC--codecs--aw88166--AYN-Odin2-Specific-modifica.patch": "0f085ddbdc1ce9c5102542c90cf093fa5d0d4d05",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0051-gpu-panel-add-Pocket-ACE-panel-driver.patch": "9b1289a68e8a944f5d7672c1dd3b386f8928904e",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0052-gpu-panel-add-Pocket-DMG-panel-driver.patch": "ba0111546e7508f40b7246ef5370ed4383bb4c3e",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0053-edt-ft5x06-add-no_regmap_bulk_read-option.patch": "887bdb6576b0dcd6bec2de32ebeae02fb379e5ea",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0053-gpu-panel-st7703-add-Pocket-DS-lower-panel.patch": "306ccbfeff9b35fc9a6de11b8f2f446a99885503",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0054-input-goodix-override-resolution-from-dt.patch": "b3feb8da6d9c00528067e87bfa37f5868885df79",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0054_sn3112-pwm-driver.patch": "41f1fb22ae73fe02c87833374f58c23105258684",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0055_Synaptics-TD4328-LCD-panel.patch": "0012f30a451ac8a09d5f57899dbb804fb0c24e10",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0056_Xm-Plus-XM91080G-panel.patch": "cf73db900b28fa3296ad9f9dc3f00df9956234c2",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0057_Chipone-ICNA35XX-panel.patch": "a9e26e5ad6511894d6e6c29e6e9281f8435903c2",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0057_DDIC-CH13726A-panel.patch": "f96721fd6f5e47dffdef3a279f67d4a2197c334d",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0058_AYN-Odin2-Mini--backlight.patch": "db3a77304c017abcc1ca798aa065a9848e1cb530",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0059_AYN-Odin2-Mini--hynitron--cstxxx.patch": "8fb4425af44169226e72ddb449042135a9e9ee71",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0060-Add-Silergy-SY7758-backlight-driver.patch": "17d0b4fc493bc171773f8c501dea5495896c1945",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0060-input-touchscreen-add-synaptics-dsx-driver.patch": "a4a1de5546268d2dc40a00c8868e551394153e88",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0060-input-touchscreen-add-synaptics-dsx-kconfig.patch": "99dea6738a209ead0d0b5dd7e069caeefbcb5de6",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0062-gpu-drm-panel-add-wt0630-panel.patch": "e08cf02b0ee7ce2afc539f018415636ac2bf5ae1",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0063-gpu-drm-panel-add-wt0600-1k-panel.patch": "7dcd600f43328100cc033a4db3d99d4b0ff28235",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0064-gpu-drm-panel-add-ar16-4inch-panel.patch": "c1f08581f60644c7ae4dd256a2638d9eab203d25",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0065-input-touchscreen-add-hynitron-cst66xx.patch": "4b887a8c53e506d009cc40f37c4b6e99524aa167",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0071-HACK-fix-usb-boot-hang.patch": "601aecb47f97855771b2988766f551c9e62aebde",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0104-drm-panel-Add-Retroid-Pocket-6-panel.patch": "73a2ed81486f99a8cf0179ee42c898ec4f70dffb",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0105-drm-panel-Add-Retroid-Pocket-Nova-panel.patch": "610abc943165a935177549140d082edcada9b506",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0120-20250728_konradybcio_gpu_cc_power_requirements_reality_check.patch": "2d34203cd4b2c231cf803a1666a189582094b90b",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0121-pmdomain-qcom-rpmhpd-presync-floor-gmu-rails.patch": "ea9f020ea6612e187136c612ea390f1644b272ff",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0122-interconnect__qcom__sm8550__Enable_QoS_configuration.patch": "2f37fd238e91b897edfd4e0a0fdc9649d2e3aada",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0200-ASoC-wcd938x-add-DMIC-DAPM-inputs.patch": "7e211f8ff4ef36da7370b44163d938ce93d69e84",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0500-ROCKNIX-set-boot-fanspeed.patch": "8abc9dca03eb4be787b2c7dfa7e94b31d325ba22",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0501-ROCKNIX-fix-wifi-and-bt-mac.patch": "0da597a68d126e2362af568a79eb0783c2997415",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0502-wakeup-qcom-ipcc-remove-IRQF-NO-SUSPEND.patch": "91cae299b7b6b9f5e22531269e38207ae196b00f",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0503-ROCKNIX-battery-name.patch": "730d7565dee920b5f691aa7c6bfd576f61050ef9",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0504-Enable-64-bit-processes-to-use-compat-input-syscalls.patch": "341014c1a9796bfa818e522f96a5add8cb700335",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0505-msm_gem-lock-before-put_iova_spaces.patch": "88b1cdc644b54e7b7d650bf17416b1cc873c0283",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0506-usbcore-add-interrupt-interval-override.patch": "eb99eb816befd4e429acce701b7fae490e0a0a7f",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0507-wifi-ath12k-skip-11d-scan-on-ayaneo-pocket-s-mini.patch": "13ee998b6e9ff2dd81a05f29335ae7637948469d",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch": "57087b0fbc0459efe63962ee7d7397ea5c823443",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1000-add-qcom-haptics-driver.patch": "63d89651631bf6bac31b95b6e59b7e0dcb41fb12",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1002-haptics-driver-support-periodic-sine-and-fixes.patch": "fe962bee891ddaa91dadf9a2c269aac3b74f5618",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1003-rsinput-add-ff.patch": "06f3ddb3ee20f4d7a09671ccc897b401ac3c97c0",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/1005-input-qcom-haptics-defer-rsinput-playback.patch": "a7de7d576f9ec1681f396cac513aad28f728fd66",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/20260424_neil_armstrong_arm64_dts_qcom_sm8_456_50_add_missing_cx_power_domain_to_gcc.patch": "71abf08f943fdee2f00ae8c6b7d5ce6b8a3fc32c",
+        "projects/ROCKNIX/devices/SM8550/patches/linux/v6_20260210_quic_utiwari_crypto_qce_add_runtime_pm_and_interconnect_bandwidth_scaling_support.patch": "0708b8ce404cc0fa3edd78ff73b9803bbc290be4",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0001-pcie-update-sm8650-dtsi.patch": "4d4718e4d21782ef1349702b4220885d5df332d2",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0006-add-hw_params-callback-function-to-drm_connector_hdmi_audio_ops.patch": "a87ccd1bccf2cd09e0aa1be0a1ac853776bf8be2",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0007-audioreach-Add-dedicated-WSA2-support.patch": "953a4b2e1a73e93e32c0b349b5b5f2a951d21793",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0060-Add-Silergy-SY7758-backlight-driver.patch": "6ca393d1df4ebe8c4a3d0c4eb6536e5d0b568b84",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0062-gpu-drm-panel-add-wt0630-panel.patch": "e08cf02b0ee7ce2afc539f018415636ac2bf5ae1",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0063-gpu-drm-panel-add-pocket-fit-panel.patch": "9eecf76cd629ba1ea3cc4b835d8242924c200edd",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0071-HACK-fix-usb-boot-hang.patch": "601aecb47f97855771b2988766f551c9e62aebde",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0120-arm64-dts-qcom-sm8650-gpucc-power-domains.patch": "fcc6be19396b660e4a322da1f9d8cf956e1e8030",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0121-pmdomain-qcom-rpmhpd-presync-floor-gmu-rails.patch": "ea9f020ea6612e187136c612ea390f1644b272ff",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0500-ROCKNIX-set-boot-fanspeed.patch": "8abc9dca03eb4be787b2c7dfa7e94b31d325ba22",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0501-ROCKNIX-fix-wifi-and-bt-mac.patch": "0da597a68d126e2362af568a79eb0783c2997415",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0503-ROCKNIX-battery-name.patch": "730d7565dee920b5f691aa7c6bfd576f61050ef9",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0504-Enable-64-bit-processes-to-use-compat-input-syscalls.patch": "341014c1a9796bfa818e522f96a5add8cb700335",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0505-msm_gem-lock-before-put_iova_spaces.patch": "88b1cdc644b54e7b7d650bf17416b1cc873c0283",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/0506-usbcore-add-interrupt-interval-override.patch": "eb99eb816befd4e429acce701b7fae490e0a0a7f",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/20260424_neil_armstrong_arm64_dts_qcom_sm8_456_50_add_missing_cx_power_domain_to_gcc.patch": "71abf08f943fdee2f00ae8c6b7d5ce6b8a3fc32c",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/v2_20260420_neil_armstrong_arm64_qcom_sm8650_misc_enhancements.patch": "9338519e3975eaa064bd8ac4874951f8ea77163d",
+        "projects/ROCKNIX/devices/SM8650/patches/linux/v6_20260210_quic_utiwari_crypto_qce_add_runtime_pm_and_interconnect_bandwidth_scaling_support.patch": "0708b8ce404cc0fa3edd78ff73b9803bbc290be4",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0026-dt-bindings-arm-qcom-ids-Add-SoC-ID-for-CQ8725S.patch": "fd3800266e27d155da810a67094dc2ff87ba1951",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0027-soc-qcom-socinfo-Add-CQ8725S-SoC-ID.patch": "f686e47bc15cc008e2910cb99b7d5b4956532706",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0028-drm-panel-Add-panel-driver-for-Chipone-ICNA35XX-base.patch": "648136d6bc0acf050058bbad3f3f68a94a8f310b",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0029-Input-edt-ft5x06-add-no_regmap_bulk_read-option.patch": "86bd7849870991b6cd132d4e8eee109f258fa7f5",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0030-leds-Add-driver-for-HEROIC-HTR3212.patch": "a546ccfd6e12956a46d614f4cfe65d2cdbca4e83",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0031_input--Add-driver-for-RSInput-Gamepad.patch": "0f38268cbbd0c9bfff9b7bfaca35149b5b521bef",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0032-ASoC-codecs-aw88166-AYN-Products-Specific-modificati.patch": "81484ebfe6324ccc96944668efd885b912e52d79",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0033-arm64-dts-qcom-sm8750-gpu-clock-controllers.patch": "ca17a7cee50406e431b3aaa5e9d231ea35f64c3c",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0034-arm64-dts-qcom-sm8750-Add-UART15.patch": "7a89892a77aec9905f579570c18aec4654cdb505",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0038-arm64-dts-qcom-sm8750-add-GPU-nodes.patch": "252cca54beddfac84a45975c8d75ccfdff650a8c",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0039-wifi-ath12k-add-initial-hardware-definition-for-WCN7.patch": "55e10517889e35fd8a74665622a6608f5ab1c125",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0040-wifi-ath12k-send-QDSS-config-when-CNSS_QDSS_CFG_MISS.patch": "70dc20bd282572a1ab5f53a7352f8ac30b29432f",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0041-wifi-ath12k-disable-CNSS_QDSS_CFG_MISS_V01-for-the-W.patch": "9007a7e97dc85d387874d47fc49aedb2594f6deb",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0042-PCI-pwrctrl-pwrseq-add-support-for-WCN7860.patch": "873f21d0dddccff9e42d66b9f31d7ebf83d60786",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0043-power-sequencing-qcom-wcn-add-support-for-WCN7860.patch": "e1b4d14d64a792773cfb9f7c99be0313400a82f4",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0044-clk-qcom-gcc-sm8750-Do-not-turn-off-PCIe-GDSCs-durin.patch": "8062f3b46813922fc8323d14c485717d8f12086a",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0045-Bluetooth-qca-add-WCN7860-support.patch": "855912f841d4b25148fbda6608ecb3c426f9823c",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0046-arm64-dts-qcom-Add-AYN-CQ8725S-Common.patch": "629a80b6bc7ed877978855303c04a2107536b23c",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0047-arm64-dts-qcom-Add-AYN-Odin3.patch": "4a749d0f680e0d938c3cf72364d3e1a102636f34",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0048-drm-msm-dsi-reparent-byte-pixel-src-to-xo-on-disable.patch": "844172185d8a10f7c268a676f26b0752306c84ae",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0049-drm-msm-a8xx-add-adreno-830-catalog.patch": "fd230f903be090825a796472e536e80acef87426",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0050-clk-qcom-gxclkctl-kaanapali-fix-gx-gdsc-collapse.patch": "047e7bf862f8a20bdf489cba17986209c0d67656",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0052-arm64-dts-qcom-cq8725s-ayn-wire-ss-through-redriver.patch": "c36003a24cf41f03ae4c7e48a3eff07b486f6faf",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0052-pmdomain-qcom-rpmhpd-presync-floor-gmu-rails.patch": "d8a4e4b8b0ac39b319488e7af7130510e421a5fa",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0055-gpu-drm-panel-add-pocket-fit-panel.patch": "444d5d03e6cf5a70560a5e84dd41e68645247cf8",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0056-backlight-aw99706-enable-hwen-before-chip-id-read.patch": "555cc41ed03bd2776ef5e138d5b2e9e2a03c9435",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0057-backlight-aw99706-konkr-cfg7.patch": "6fe8fbca2a427e7573e9f5f64302bd43ef1e7557",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0058-input-joystick-add-ayaneo-mcu-joystick.patch": "21907fa2c3ce0a7964365d53cf4c6fede00bdb98",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0059-ASoC-aw88395-lib-skip-monitor-sections-in-V1-ACF-parse.patch": "245ed6d139a97c4b639378cc8da3873b1229a601",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0060-ASoC-qcom-sc8280xp-enable-MI2S-bit-clock-on-BE-startup.patch": "85e3499d6093c095ace3deddbae2ef00e330dd17",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0061-input-touchscreen-add-chipone-tddi.patch": "e1ff4767617e504cfa7712f5030dea94db85e8ca",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0062-backlight-aw99706-honor-blank-power-state.patch": "973f049da4d8bf1877459509f35fe3fa9a48eb11",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0063-ASoC-wcd939x-route-usbss-on-integrated-jack-insert.patch": "270c91bc92c953337dfa6d10aafbe0b05a9531cc",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0064-ASoC-wcd-mbhc-clear-stale-jack-report-on-mechanical-removal.patch": "0c7074fd5f8abd434cf21c84662295ae33bd32e8",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0066-scsi-ufs-ufs-qcom-add-sm8750-compatible.patch": "53ee895af393e34a8b1125877233c0e143cdbd2e",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0069-input-misc-add-konkr-sysbtn-MCU-system-buttons.patch": "207d675fc8119f789ebcef9e2d225063b24bbcb3",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0072-ASoC-lpass-rx-macro-add-HPH-PCM-mode.patch": "1894731a3a1cb599b851331ac443663f7d702193",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0073-ASoC-wcd939x-add-HPH-PCM-HiFi-mode.patch": "bce1af451266f797c4e18d7b6802cc96c2ed9911",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0074-soundwire-qcom-PCM-data-port-format-enable.patch": "2a24aefebdb5b8c05510dfb4a0a9a16fcda99e53",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0075-arm64-dts-qcom-sm8750-add-CPU-thermal-cooling.patch": "12282860756c5dbb22a1a16a9cef6f09e5ff3e01",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0076-arm64-dts-qcom-sm8750-set-CPU-capacity-dmips-mhz.patch": "dd4ece54c8ccf163c398d6c5d9f8e76297863029",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0500-ROCKNIX-set-boot-fanspeed.patch": "5b6008e1002d78bc8ee5857944faa27799d00846",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0501-ROCKNIX-fix-wifi-and-bt-mac.patch": "2f3fceebdf1b4076600bac552c174d3e590270be",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0503-ROCKNIX-battery-name.patch": "f7a6332764e03ce44f71ea1020fc8e157cb512cd",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0504-Enable-64-bit-processes-to-use-compat-input-syscalls.patch": "ff89124662527e0c149374d3d8b1526b1616578d",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0504-wakeup-qcom-ipcc-remove-IRQF-NO-SUSPEND.patch": "f2db939ed97768c54862d9c099da9c97d93e4f0e",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0505-msm_gem-lock-before-put_iova_spaces.patch": "5ea1fe385850624d24c2ae7ae4b8b368e012ce26",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0508-input-rsinput-add-pm-resume-to-reinit-mcu-after-suspend.patch": "6a14afd8cb421ba71cda9624b8774acc4135201d",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0509-soc-qcom-pmic_glink_altmode-defer-until-mux-switch-ready.patch": "0bf385ddb95a0e8c2414b9afdef3c0c1130ffe4b",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0509-usb-typec-ucsi-clear-USB-role.patch": "bfdffacc652f885c8af588bfe59939e239ae9374",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0517-usb-typec-mux-dont-swallow-EPROBE_DEFER.patch": "1aa4be54f9b10bcc16f55bc8a51126e9639655d6",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0601-ROCKNIX-odin3-pwm-fan-sysfs.patch": "dcdc9807aef13f622f7eb8671c96e63398961fab",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0602-ROCKNIX-odin3-rtc-persist-offset-sdam.patch": "6c352eb234fc8faec96ee76e7264e28e28e6256d",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0603-ASoC-codecs-wcd939x-keep-the-codec-resumed-while-a-ja.patch": "808cdfdab83d8d0078c978addf06ee16967ad6ac",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0604-arm64-dts-qcom-cq8725s-ayn-enable-swr1-PCM-port-mask.patch": "94b0b0546ae20a0dde7a1da4200fe3c950d6bdae",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0606-phy-qcom-qmp-pcie-switch-pipe-clk-mux-to-phy.patch": "a50ee34b0532bc22c3a72309da5621a76e90d297",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch": "57087b0fbc0459efe63962ee7d7397ea5c823443",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/1000-input-misc-qcom-hv-haptics-sm8750.patch": "c03c723a2319fc77ba8ba18aecac24593b187aca",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/1001-haptics-driver-support-periodic-sine-and-fixes.patch": "400a503029c854b4f489b69cb0c5733b97e27acd",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/1002-input-rsinput-sm8750-ff.patch": "caca18f631ef6994233f562ec97a332f6683ea3f",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/1003-arm64-dts-qcom-ayn-cq8725s-common-hv-haptics.patch": "14205bf66cfb1b6138d74c68ad473cf8e92c1961",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/1004-input-qcom-hv-haptics-defer-rsinput-playback.patch": "10bd9a50a877ad2412b586efa9c053054f71ca94",
+        "projects/ROCKNIX/devices/SM8750/patches/linux/1300-input-rsinput-ranges.patch": "a462428ed042b884b379c9eed313d153a6b19580",
+        "projects/ROCKNIX/packages/linux/patches/7.2/0010-msm-resource-cleanup.patch": "185aa255bb60ad32c35631740f877804072d99e7",
+        "projects/ROCKNIX/packages/linux/patches/7.2/9998-silence-initramfs-unpack-warn.patch": "026040a13c24a3428bcc8b7b96ac64f3b1d2f908",
+        "projects/ROCKNIX/packages/linux/patches/7.2/9999-fix-rust-build-error.patch": "d0a40ba1006f258b79bdbc0e1e90e970dc2fb59c",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0002-input-add-input-polldev-driver.patch": "e97f4ce49d3b99f831505dcddf946c956f168a3e",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0003-pwm-add-pwm_set_period.patch": "97daeee5ad86509588ed2d6393c8df5774623a03",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0004-input-adc-keys-redirect-keycode-316-to-rocknix-joypa.patch": "6cdd6bced2d98c6ae73b4b0f130d5f7871a18727",
+        "projects/ROCKNIX/packages/linux/patches/mainline/0005-Bluetooth-btrtl-Add-the-support-for-RTL8733BU.patch": "17b9081fe239d7dcd780d235597d2008b7e509d2"
+      }
+    }
+  }
+}

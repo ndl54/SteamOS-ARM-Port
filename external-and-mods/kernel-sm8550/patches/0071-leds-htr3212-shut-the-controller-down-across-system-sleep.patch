@@ -1,0 +1,120 @@
+From: lavachemist <48248311+lavachemist@users.noreply.github.com>
+Subject: [PATCH] leds: htr3212: shut the controller down across system sleep
+
+The HTR3212 stick-LED controllers on the Retroid Pocket 6/Nova and the AYN
+Thor stayed enabled (SDB high) through system sleep. Measured on the Nova
+with an inline USB-C meter at full charge: about 0.34 W asleep with SDB
+high, 0.19 W with both controllers shut down, LEDs at 0 either way.
+
+Pull SDB low in suspend; on resume raise it, re-initialise the chip and
+restore every LED's brightness.
+---
+
+Integration review: balance lifecycle and preserve error handling; see report 090.
+
+--- a/drivers/leds/leds-htr3212.c
++++ b/drivers/leds/leds-htr3212.c
+@@ -41,6 +41,8 @@
+ 	struct regulator *vdd;
+ 	struct regmap *regmap;
+ 	struct mutex lock;
++	struct mutex sleep_lock;
++	bool suspended;
+ 	struct htr3212_led_data leds[HTR3212_CHANNELS];
+ 	unsigned int num_leds;
+ };
+@@ -62,7 +64,7 @@
+ 	return ret;
+ }
+ 
+-static int htr3212_brightness_set(struct led_classdev *led_cdev,
++static int __htr3212_brightness_set(struct led_classdev *led_cdev,
+ 				     enum led_brightness brightness)
+ {
+ 	const struct htr3212_led_data *led_data =
+@@ -81,6 +83,20 @@
+ 		return ret;
+ 
+ 	return htr3212_write(led_data->priv, HTR3212_PWM_UPDATE, 0x00);
++}
++
++static int htr3212_brightness_set(struct led_classdev *led_cdev,
++				  enum led_brightness brightness)
++{
++	struct htr3212_led_data *led_data =
++		container_of(led_cdev, struct htr3212_led_data, cdev);
++	struct htr3212_priv *priv = led_data->priv;
++
++	guard(mutex)(&priv->sleep_lock);
++	/* The LED core retains the requested brightness for resume. */
++	if (priv->suspended)
++		return 0;
++	return __htr3212_brightness_set(led_cdev, brightness);
+ }
+ 
+ static int htr3212_reset_regs(struct htr3212_priv *priv)
+@@ -261,6 +277,7 @@
+ 
+ 	i2c_set_clientdata(client, priv);
+ 	mutex_init(&priv->lock);
++	mutex_init(&priv->sleep_lock);
+ 
+ 	ret = htr3212_init_regs(priv);
+ 	if (ret)
+@@ -287,6 +304,48 @@
+ 
+ 	regulator_disable(priv->vdd);
+ }
++
++/*
++ * With SDB high the two stick-LED controllers drew about 150 mW (5 V input)
++ * in system sleep with every LED at 0. Pull SDB low for sleep, then bring
++ * the chip back up and restore each LED's brightness on resume. No I2C in
++ * the suspend path.
++ */
++static int htr3212_suspend(struct device *dev)
++{
++	struct htr3212_priv *priv = dev_get_drvdata(dev);
++
++	guard(mutex)(&priv->sleep_lock);
++	priv->suspended = true;
++	gpiod_set_value_cansleep(priv->sdb, 0);
++	return 0;
++}
++
++static int htr3212_resume(struct device *dev)
++{
++	struct htr3212_priv *priv = dev_get_drvdata(dev);
++	unsigned int i;
++	int ret;
++
++	guard(mutex)(&priv->sleep_lock);
++	gpiod_set_value_cansleep(priv->sdb, 1);
++	usleep_range(10000, 11000);
++
++	ret = htr3212_init_regs(priv);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < priv->num_leds; i++) {
++		ret = __htr3212_brightness_set(&priv->leds[i].cdev,
++					    priv->leds[i].cdev.brightness);
++		if (ret)
++			return ret;
++	}
++	priv->suspended = false;
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(htr3212_pm_ops, htr3212_suspend, htr3212_resume);
+ 
+ static const struct of_device_id of_htr3212_match[] = {
+ 	{ .compatible = "heroic,htr3212", },
+@@ -306,6 +365,7 @@
+ 	.driver = {
+ 		.name	= "htr3212",
+ 		.of_match_table = of_htr3212_match,
++		.pm = pm_sleep_ptr(&htr3212_pm_ops),
+ 	},
+ 	.probe		= htr3212_probe,
+ 	.remove		= htr3212_remove,

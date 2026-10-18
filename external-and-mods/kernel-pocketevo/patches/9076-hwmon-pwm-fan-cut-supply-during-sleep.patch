@@ -1,0 +1,29 @@
+From: Pocket EVO integration <noreply@armada.local>
+Subject: [PATCH] hwmon: pwm-fan: drop sleep supply after EVO charging policy
+
+Adapt source b367e5c after 9071, preserving charging-on behavior and
+restoring awake PWM on suspend failure. Also cut supply when charging mode
+is configured but external power is absent.
+
+--- a/drivers/hwmon/pwm-fan.c
++++ b/drivers/hwmon/pwm-fan.c
+@@ -577,6 +577,8 @@
+ 
+ 	ctx->charging_valid = false;
+ 	ret = on ? __set_pwm(ctx, ctx->pwm_sleep_charging) : pwm_fan_power_off(ctx, true);
++	if (!ret && !on)
++		ret = pwm_fan_switch_power(ctx, false);
+ 	if (ret) {
+ 		dev_warn(ctx->dev, "failed to turn the fan %s in sleep: %d\n", on ? "on" : "off", ret);
+ 		return ret;
+@@ -869,6 +871,10 @@
+ 		}
+ 	} else {
+ 		ret = pwm_fan_power_off(ctx, true);
++		if (!ret)
++			ret = pwm_fan_switch_power(ctx, false);
++		if (ret)
++			__set_pwm(ctx, ctx->pwm_awake);
+ 	}
+ 	mutex_unlock(&ctx->lock);
+ 

@@ -1,0 +1,126 @@
+From: lavachemist <48248311+lavachemist@users.noreply.github.com>
+Subject: [PATCH] Input: pm8941-pwrkey: the wake press is not a new press
+
+The power key press that wakes the system is delivered to userspace once
+the system is back, so Steam (via logind) sees a fresh "power pressed"
+and puts the device straight back to sleep: on the KONKR Pocket FIT the
+screen came on and went dark again about a second after waking. Dropping
+only the press does not help, because a release without a press is turned
+into a synthetic press + release.
+
+Ignore pon key events (press and release) from system suspend until three
+seconds after resume, while still tracking the key state, so a release
+after that window is not turned into a press either. Three seconds also
+covers a second press while the screen is still coming on (about 2 s after
+resume on the Pocket FIT), which would otherwise put it back to sleep. Each pon key (power and resin) owns a serialized window. Consume a held
+wake key through its release and balance any pre-suspend reported press.
+---
+
+Integration review: balance lifecycle and preserve error handling; see report 090.
+
+--- a/drivers/input/misc/pm8941-pwrkey.c
++++ b/drivers/input/misc/pm8941-pwrkey.c
+@@ -12,6 +12,7 @@
+ #include <linux/ktime.h>
+ #include <linux/log2.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/platform_device.h>
+@@ -81,6 +82,11 @@
+ 	u32 sw_debounce_time_us;
+ 	ktime_t sw_debounce_end_time;
+ 	bool last_status;
++	struct mutex sleep_lock;
++	bool sleeping;
++	bool ignored_press;
++	bool suppress_release;
++	ktime_t ignore_end;
+ 	const struct pm8941_data *data;
+ };
+ 
+@@ -146,11 +152,20 @@
+ 	return NOTIFY_DONE;
+ }
+ 
++/*
++ * From suspend until 3 s after resume, key events belong to the wake press
++ * or to an extra press while the screen comes on (~2 s on the Pocket FIT),
++ * and are not reported (the key state is still tracked).
++ */
++#define PM8941_PWRKEY_WAKE_IGNORE_MS	3000
++
+ static irqreturn_t pm8941_pwrkey_irq(int irq, void *_data)
+ {
+ 	struct pm8941_pwrkey *pwrkey = _data;
+ 	unsigned int sts;
+ 	int err;
++
++	guard(mutex)(&pwrkey->sleep_lock);
+ 
+ 	if (pwrkey->sw_debounce_time_us) {
+ 		if (ktime_before(ktime_get(), pwrkey->sw_debounce_end_time)) {
+@@ -171,6 +186,28 @@
+ 		pwrkey->sw_debounce_end_time = ktime_add_us(ktime_get(),
+ 						pwrkey->sw_debounce_time_us);
+ 
++	if (pwrkey->sleeping || ktime_before(ktime_get(), pwrkey->ignore_end)) {
++		pwrkey->ignored_press = !!sts;
++		pwrkey->suppress_release = !!sts;
++		pwrkey->last_status = !!sts;
++		return IRQ_HANDLED;
++	}
++	/* Consume the eventual release even if a held wake key outlives the window. */
++	if (pwrkey->ignored_press) {
++		pwrkey->ignored_press = !!sts;
++		pwrkey->suppress_release = !!sts;
++		pwrkey->last_status = !!sts;
++		return IRQ_HANDLED;
++	}
++
++	/* A short wake press can arrive only as a delayed release IRQ. */
++	if (!sts && pwrkey->suppress_release) {
++		pwrkey->suppress_release = false;
++		pwrkey->last_status = false;
++		return IRQ_HANDLED;
++	}
++	pwrkey->suppress_release = false;
++
+ 	/*
+ 	 * Simulate a press event in case a release event occurred without a
+ 	 * corresponding press event.
+@@ -224,6 +261,14 @@
+ {
+ 	struct pm8941_pwrkey *pwrkey = dev_get_drvdata(dev);
+ 
++	guard(mutex)(&pwrkey->sleep_lock);
++	pwrkey->sleeping = true;
++	pwrkey->ignored_press = pwrkey->last_status;
++	pwrkey->suppress_release = true;
++	/* Balance a press delivered before suspend even if its release is suppressed. */
++	input_report_key(pwrkey->input, pwrkey->code, 0);
++	input_sync(pwrkey->input);
++
+ 	if (device_may_wakeup(dev))
+ 		enable_irq_wake(pwrkey->irq);
+ 
+@@ -233,6 +278,10 @@
+ static int pm8941_pwrkey_resume(struct device *dev)
+ {
+ 	struct pm8941_pwrkey *pwrkey = dev_get_drvdata(dev);
++
++	guard(mutex)(&pwrkey->sleep_lock);
++	pwrkey->ignore_end = ktime_add_ms(ktime_get(), PM8941_PWRKEY_WAKE_IGNORE_MS);
++	pwrkey->sleeping = false;
+ 
+ 	if (device_may_wakeup(dev))
+ 		disable_irq_wake(pwrkey->irq);
+@@ -267,6 +316,7 @@
+ 	if (!pwrkey)
+ 		return -ENOMEM;
+ 
++	mutex_init(&pwrkey->sleep_lock);
+ 	pwrkey->dev = &pdev->dev;
+ 	pwrkey->data = of_device_get_match_data(&pdev->dev);
+ 
