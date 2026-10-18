@@ -39,6 +39,9 @@ Item {
         Rectangle {
             id: surface
             visible: rp.mode === "pad"
+            // Also stop pending taps/momentum when switching to Keyboard:
+            // RemotePad itself stays visible across that mode change.
+            onVisibleChanged: if (!visible && rp.visible) surface.letGo()
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: 28 * Ui.s
@@ -52,6 +55,7 @@ Item {
             property bool holding: false         // left button held by a drag
             // One touch, from the first finger down to the last one up.
             property int most: 0
+            property int activeCount: 0
             property bool travelled: false
             property bool fromTap: false          // started inside the click delay
             property bool inStrip: false
@@ -73,6 +77,11 @@ Item {
                 if (holding) Ui.send("/remote/click", { button: "left", state: "up" })
                 holding = false
                 fromTap = false
+                most = 0
+                activeCount = 0
+                fine = false
+                inStrip = false
+                travelled = false
                 mx = my = wx = wy = vx = vy = 0
                 clickDelay.stop()
                 Ui.send("/remote/letgo")
@@ -145,6 +154,10 @@ Item {
                 minimumTouchPoints: 1
                 maximumTouchPoints: 3
                 mouseEnabled: true
+                // touchPoints only lists TouchPoints declared here: without them
+                // down() was always empty and the pad never moved the pointer
+                // (Thor tester; the keyboard page's drag pad was fine).
+                touchPoints: [ TouchPoint {}, TouchPoint {}, TouchPoint {} ]
 
                 function down() { return touch.touchPoints.filter(function (p) { return p.pressed }) }
                 function centre(pts) {
@@ -171,16 +184,29 @@ Item {
                         clickDelay.stop()
                     }
                     surface.most = Math.max(surface.most, pts.length)
+                    surface.activeCount = pts.length
                     if (pts.length === 2) surface.spread0 = spread(pts)
                     surface.lastC = centre(pts)
+                    if (!surface.travelled) surface.origin = surface.lastC
                 }
                 onUpdated: {
+                    if (surface.most === 0) return
                     var pts = down()
                     surface.most = Math.max(surface.most, pts.length)
                     var c = centre(pts)
+                    // Qt may update old points before announcing a new one.
+                    // A changed finger count must not become pointer/scroll motion.
+                    if (pts.length !== surface.activeCount) {
+                        surface.activeCount = pts.length
+                        surface.lastC = c
+                        if (!surface.travelled) surface.origin = c
+                        if (pts.length === 2) surface.spread0 = spread(pts)
+                        return
+                    }
                     var dx = c.x - surface.lastC.x, dy = c.y - surface.lastC.y
                     surface.lastC = c
-                    if (!surface.travelled && Math.hypot(c.x - surface.origin.x, c.y - surface.origin.y) > surface.slop) {
+                    if (!surface.travelled && (Math.hypot(c.x - surface.origin.x, c.y - surface.origin.y) > surface.slop
+                            || (pts.length === 2 && Math.abs(spread(pts) - surface.spread0) >= 50 * Ui.s))) {
                         surface.travelled = true
                         if (surface.fromTap && surface.most === 1 && !surface.inStrip && !surface.holding) {
                             surface.holding = true
@@ -224,8 +250,17 @@ Item {
                     }
                 }
                 onReleased: {
-                    if (down().length > 0)
+                    if (surface.most === 0) return
+                    var pts = down()
+                    surface.activeCount = pts.length
+                    if (pts.length > 0) {
+                        // A removed finger changes the centroid without any
+                        // motion. Rebase before the remaining fingers update.
+                        surface.lastC = centre(pts)
+                        if (!surface.travelled) surface.origin = surface.lastC
+                        if (pts.length === 2) surface.spread0 = spread(pts)
                         return
+                    }
                     var quick = Date.now() - surface.t0 < 300
                     if (surface.holding) {
                         Ui.send("/remote/click", { button: "left", state: "up" })
@@ -247,7 +282,7 @@ Item {
                     surface.fromTap = false
                     surface.inStrip = false
                 }
-                onCanceled: { surface.most = 0; surface.letGo() }
+                onCanceled: { surface.letGo() }
             }
         }
         RowLayout {
