@@ -1,0 +1,22 @@
+Subject: [PATCH] input: qcom-haptics: propagate constant upload errors
+
+Do not queue a stop for an effect whose configuration failed.
+
+--- a/drivers/input/misc/qcom-hv-haptics.c
++++ b/drivers/input/misc/qcom-hv-haptics.c
+@@ -2773,13 +2773,13 @@
+ 		amplitude = tmp / 0x7fff;
+ 		dev_dbg(chip->dev, "upload constant effect, length = %dms, amplitude = %#x\n",
+ 				length_ms, amplitude);
+-		schedule_delayed_work(&chip->stop_work, msecs_to_jiffies(length_ms));
+-		haptics_load_constant_effect(chip, amplitude);
++		rc = haptics_load_constant_effect(chip, amplitude);
+ 		if (rc < 0) {
+ 			dev_err(chip->dev, "set direct play failed, rc=%d\n",
+ 					rc);
+ 			return rc;
+ 		}
++		schedule_delayed_work(&chip->stop_work, msecs_to_jiffies(length_ms));
+ 
+ 		break;
+ 	case FF_PERIODIC:

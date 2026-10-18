@@ -78,7 +78,58 @@ QtObject {
         request("POST", path, body === undefined ? {} : body, function () { ui.changed() })
     }
     // Fire and forget (trackpad moves, keys): no refresh per event.
-    function send(path, body) { request("POST", path, body === undefined ? {} : body) }
+    property string remoteSession: ""
+    property double remoteSequence: 0
+    property bool remoteOpening: false
+    property var remotePending: []
+    property var remoteEvents: []
+    property bool remoteBusy: false
+    function drainRemote() {
+        if (remoteBusy || !remoteSession || !remoteEvents.length) return
+        var event = remoteEvents.shift(), b = event[1]
+        b.session = remoteSession
+        b.sequence = ++remoteSequence
+        var session = remoteSession
+        remoteBusy = true
+        request("POST", event[0], b, function (reply) {
+            remoteBusy = false
+            if ((!reply || !reply.ok) && remoteSession === session) {
+                remoteSession = ""
+                remoteEvents = []
+            }
+            drainRemote()
+        })
+    }
+    Timer {
+        interval: 500; repeat: true; running: ui.remoteSession !== ""
+        onTriggered: ui.send("/remote/keepalive", {})
+    }
+    function send(path, body) {
+        var b = body === undefined ? {} : body
+        if (path.indexOf("/remote/") !== 0) {
+            request("POST", path, b)
+            return
+        }
+        if (!remoteSession) {
+            if (path === "/remote/keepalive") return
+            remotePending.push([path, b])
+            if (remoteOpening) return
+            remoteOpening = true
+            request("POST", "/remote/open", {}, function (reply) {
+                remoteOpening = false
+                var queued = remotePending
+                remotePending = []
+                if (!reply || !reply.session) return
+                remoteSession = reply.session
+                remoteSequence = 0
+                queued.forEach(function (event) { send(event[0], event[1]) })
+            })
+            return
+        }
+        if (path === "/remote/keepalive" && (remoteBusy || remoteEvents.length)) return
+        remoteEvents.push([path, b])
+        drainRemote()
+    }
     function setting(key, value) {
         var b = {}
         b[key] = value

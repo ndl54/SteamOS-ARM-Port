@@ -1073,10 +1073,12 @@ def recent_games(count: int = 8) -> list[dict]:
             apps = lc["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["apps"]
         except (OSError, KeyError, TypeError):
             apps = {}
+        if not isinstance(apps, dict):
+            apps = {}
         for appid, info in apps.items():
             try:
                 last, aid = int(info.get("LastPlayed", 0)), int(appid)
-            except (ValueError, AttributeError):
+            except (ValueError, TypeError, AttributeError):
                 continue
             name = GAMES.name(aid) if last else ""
             if name and aid not in NOT_GAMES:
@@ -1085,10 +1087,17 @@ def recent_games(count: int = 8) -> list[dict]:
             sc = vdf_binary((user_dir / "config" / "shortcuts.vdf").read_bytes()).get("shortcuts", {})
         except (OSError, ValueError, IndexError):
             sc = {}
+        if not isinstance(sc, dict):
+            sc = {}
         for item in sc.values():
-            last = int(item.get("LastPlayTime", 0) or 0)
-            appid = int(item.get("appid", 0)) & 0xFFFFFFFF
-            if last and appid:
+            if not isinstance(item, dict) or not isinstance(item.get("AppName", ""), str):
+                continue
+            try:
+                last = int(item.get("LastPlayTime", 0) or 0)
+                appid = int(item.get("appid", 0)) & 0xFFFFFFFF
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if 0 < last < 2**63 and appid:
                 found.append({"gameid": str((appid << 32) | 0x02000000), "name": item.get("AppName", ""),
                               "last": last, "art": steam_art(appid, user_dir, shortcut=True)})
     found.sort(key=lambda g: g["last"], reverse=True)
@@ -1794,17 +1803,27 @@ class UInputDevice:
     def __init__(self, name: str, keys: list[int], rels: list[int], product: int):
         import fcntl
         self.fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
-        if keys:
-            fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_KEY)
-            for k in keys:
-                fcntl.ioctl(self.fd, UI_SET_KEYBIT, k)
-        if rels:
-            fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_REL)
-            for r in rels:
-                fcntl.ioctl(self.fd, UI_SET_RELBIT, r)
-        setup = struct.pack("HHHH80sI", 0x06, 0x1d6b, product, 1, name.encode()[:79], 0)
-        fcntl.ioctl(self.fd, UI_DEV_SETUP, setup)
-        fcntl.ioctl(self.fd, UI_DEV_CREATE)
+        try:
+            if keys:
+                fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_KEY)
+                for k in keys:
+                    fcntl.ioctl(self.fd, UI_SET_KEYBIT, k)
+            if rels:
+                fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_REL)
+                for r in rels:
+                    fcntl.ioctl(self.fd, UI_SET_RELBIT, r)
+            setup = struct.pack("HHHH80sI", 0x06, 0x1d6b, product, 1, name.encode()[:79], 0)
+            fcntl.ioctl(self.fd, UI_DEV_SETUP, setup)
+            fcntl.ioctl(self.fd, UI_DEV_CREATE)
+        except BaseException:
+            os.close(self.fd)
+            self.fd = -1
+            raise
+
+    def close(self):
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
 
     def emit(self, events: list[tuple[int, int, int]]) -> None:
         data = b"".join(struct.pack("qqHHi", 0, 0, t, c, v) for t, c, v in events)
@@ -1814,10 +1833,67 @@ class UInputDevice:
 class RemoteInput:
     """Made on first use, so nothing appears until the pages are used."""
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.mouse: UInputDevice | None = None
         self.keys: UInputDevice | None = None
         self.scroll_rest = [0.0, 0.0]
+        self.session = None
+        self.sequence = 0
+        self.deadline = 0.0
+        self.owners = {}
+
+    def begin(self):
+        import secrets
+        with self.lock:
+            self.release()
+            self.session = secrets.token_hex(16)
+            self.sequence = 0
+            self.deadline = time.monotonic() + 2.0
+            return self.session
+
+    def expire(self):
+        with self.lock:
+            if self.session and time.monotonic() >= self.deadline:
+                self.release()
+                self.session = None
+
+    def dispatch(self, action, body):
+        with self.lock:
+            self.expire()
+            seq = body.get("sequence")
+            if (not self.session or body.get("session") != self.session or
+                    type(seq) is not int or not self.sequence < seq < 2**53):
+                return False
+            if seq != self.sequence + 1:
+                # Independent HTTP requests may reorder. A missing event might
+                # have been an UP: never keep a hold alive across a gap.
+                self.release()
+                self.session = None
+                return False
+            self.sequence = seq
+            self.deadline = time.monotonic() + 2.0
+            try:
+                if action == "keepalive":
+                    return True
+                if action == "letgo":
+                    self.release()
+                    return True
+                if action == "move":
+                    return self.move(int(body.get("dx", 0)), int(body.get("dy", 0)))
+                if action == "wheel":
+                    return self.scroll(int(body.get("dx", 0)), int(body.get("dy", 0)))
+                if action == "click":
+                    return self.button(str(body.get("button", "left")),
+                                       str(body.get("state", "click")), str(body.get("owner", "manual")))
+                if action == "type":
+                    if "chord" in body:
+                        return self.chord(body["chord"])
+                    if isinstance(body.get("retype"), dict):
+                        return self.retype(int(body["retype"].get("erase", 0)), str(body["retype"].get("chars", "")))
+                    return self.key(body.get("chars"), body.get("press"))
+            except (OSError, ValueError, TypeError, OverflowError):
+                self.release()
+            return False
 
     def _devices(self) -> bool:
         if self.mouse and self.keys:
@@ -1831,6 +1907,9 @@ class RemoteInput:
             return True
         except OSError as exc:
             log(f"top-screen input: {exc}")
+            for device in (self.mouse, self.keys):
+                if device:
+                    device.close()
             self.mouse = self.keys = None
             return False
 
@@ -1855,26 +1934,39 @@ class RemoteInput:
                 self.mouse.emit(ev)
             return True
 
-    def button(self, name: str, state: str) -> bool:
+    def button(self, name: str, state: str, owner: str = "manual") -> bool:
         code = BUTTONS.get(name)
-        if code is None:
+        if code is None or state not in {"down", "up", "click"} or owner not in {"manual", "drag"}:
             return False
         with self.lock:
             if not self._devices():
                 return False
-            if state in ("down", "click"):
-                self.mouse.emit([(EV_KEY, code, 1)])
-            if state in ("up", "click"):
-                self.mouse.emit([(EV_KEY, code, 0)])
+            owners = self.owners.setdefault(code, set())
+            was_down = bool(owners)
+            if state == "down":
+                owners.add(owner)
+            elif state == "up":
+                owners.discard(owner)
+            elif not owners:
+                self.mouse.emit([(EV_KEY, code, 1), (EV_KEY, code, 0)])
+            if was_down != bool(owners):
+                self.mouse.emit([(EV_KEY, code, int(bool(owners)))])
             return True
 
     def release(self) -> None:
-        """Let go of every button and modifier (the page went away)."""
+        """Release independently, including partially initialized devices."""
         with self.lock:
-            if not (self.mouse and self.keys):
-                return
-            self.mouse.emit([(EV_KEY, c, 0) for c in BUTTONS.values()])
-            self.keys.emit([(EV_KEY, c, 0) for c in MOD_KEYS.values()])
+            self.owners.clear()
+            for device, codes in ((self.mouse, BUTTONS.values()), (self.keys, MOD_KEYS.values())):
+                if device:
+                    try:
+                        device.emit([(EV_KEY, c, 0) for c in codes])
+                    except OSError:
+                        device.close()
+                        if device is self.mouse:
+                            self.mouse = None
+                        else:
+                            self.keys = None
 
     def chord(self, parts) -> bool:
         """["ctrl", "c"], ["ctrl", "alt", "Delete"]...: modifiers, then the
@@ -2362,21 +2454,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path == ["fg"]:
             g = GAMES.state(load_config())
             ok = fg_set(g["appid"], g["name"], int(b.get("multiplier", 1)))
-        elif path == ["remote", "move"]:
-            ok = REMOTE.move(int(b.get("dx", 0)), int(b.get("dy", 0)))
-        elif path == ["remote", "wheel"]:
-            ok = REMOTE.scroll(int(b.get("dx", 0)), int(b.get("dy", 0)))
-        elif path == ["remote", "click"]:
-            ok = REMOTE.button(str(b.get("button", "left")), str(b.get("state", "click")))
-        elif path == ["remote", "type"]:
-            if "chord" in b:
-                ok = REMOTE.chord(b["chord"])
-            elif isinstance(b.get("retype"), dict):
-                ok = REMOTE.retype(int(b["retype"].get("erase", 0)), str(b["retype"].get("chars", "")))
-            else:
-                ok = REMOTE.key(b.get("chars"), b.get("press"))
-        elif path == ["remote", "letgo"]:
-            REMOTE.release()
+        elif path == ["remote", "open"]:
+            self.reply({"session": REMOTE.begin()})
+            return
+        elif path[0] == "remote" and len(path) == 2:
+            ok = REMOTE.dispatch(path[1], b)
         elif path == ["type"]:
             if "chord" in b:
                 ok = TYPER.chord(b["chord"])
@@ -2562,6 +2644,11 @@ def main() -> int:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    def input_watchdog():
+        while True:
+            time.sleep(0.25)
+            REMOTE.expire()
+    threading.Thread(target=input_watchdog, daemon=True).start()
     threading.Thread(target=watch_home_gesture, daemon=True).start()
     threading.Thread(target=watch_touch_activity, daemon=True).start()
     threading.Thread(target=hub_pin_watch, daemon=True).start()
@@ -2593,7 +2680,12 @@ def main() -> int:
             proc = subprocess.Popen(["qml6", str(qml), "--", str(api_file)], env=env)
             if after_start:
                 threading.Thread(target=after_start, daemon=True).start()
-            rc = proc.wait()
+            try:
+                rc = proc.wait()
+            finally:
+                with REMOTE.lock:
+                    REMOTE.release()
+                    REMOTE.session = None
             if time.monotonic() - started < 3:
                 log(f"{name} exited right away ({rc}), retrying in 5 s")
                 time.sleep(5)

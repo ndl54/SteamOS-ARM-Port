@@ -20,8 +20,10 @@ namespace gamescope
 	// Steam Game Mode writes a CARDINAL bit-cast float:
 	//   0..1   = normalized
 	//   >1     = nits (not percent)
-	// Nonfinite values return false so callers also skip color updates.
-	bool ApplySteamBrightnessValue( float flVal );
+	// Nits require an explicit backlight_max_nits endpoint. No samples or
+	// persisted history are calibration. Out-of-range values are rejected.
+	// flColorNits is NaN when normalized input has no configured nits range.
+	bool ApplySteamBrightnessValue( float flVal, float &flColorNits );
 
 	// Keyboard / hotkey steps. Returns true if the level changed.
 	bool StepBacklight( int nDirection );

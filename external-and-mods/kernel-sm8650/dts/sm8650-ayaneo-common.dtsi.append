@@ -71,3 +71,48 @@
 		reg = <0xbc 0x4>;
 	};
 };
+
+/* The pinned board include reuses Linux's GPU critical trip-point2 for an
+ * unbound 40C fan trip. Restore the base 115C shutdown trip, separately from
+ * the inherited fan labels/thresholds. No new fan calibration is inferred.
+ */
+&gpu0_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu0_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu1_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu1_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu2_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu2_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu3_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu3_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu4_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu4_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu5_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu5_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu6_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu6_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};
+&gpu7_trips {
+	/delete-node/ trip-point2;
+	trip-point2 { temperature = <115000>; hysteresis = <0>; type = "critical"; };
+	gpu7_fan0: fan-trip0 { temperature = <40000>; hysteresis = <3000>; type = "passive"; };
+};

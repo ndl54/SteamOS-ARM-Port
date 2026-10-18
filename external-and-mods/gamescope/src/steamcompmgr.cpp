@@ -7880,7 +7880,11 @@ handle_property_notify(xwayland_ctx_t *ctx, XPropertyEvent *ev)
 	{
 		uint32_t val = get_prop( ctx, ctx->root, ctx->atoms.gamescopeInternalDisplayBrightness, 0 );
 		const float flVal = bit_cast<float>( val );
-		if ( gamescope::ApplySteamBrightnessValue( flVal ) )
+		float flColorNits;
+		auto *pBrightnessConnector = GetBackend()->GetCurrentConnector();
+		if ( pBrightnessConnector &&
+			pBrightnessConnector->GetScreenType() == gamescope::GAMESCOPE_SCREEN_TYPE_INTERNAL &&
+			gamescope::ApplySteamBrightnessValue( flVal, flColorNits ) )
 		{
 			const float flGain = gamescope::GetSoftwareBacklightGain();
 			if ( g_ColorMgmt.pending.flSoftwareBacklightGain != flGain )
@@ -7888,7 +7892,7 @@ handle_property_notify(xwayland_ctx_t *ctx, XPropertyEvent *ev)
 				g_ColorMgmt.pending.flSoftwareBacklightGain = flGain;
 				hasRepaint = true;
 			}
-			if ( set_internal_display_brightness( flVal < 1.f ? 500.f * std::max( flVal, 0.01f ) : flVal ) )
+			if ( std::isfinite( flColorNits ) && set_internal_display_brightness( flColorNits ) )
 				hasRepaint = true;
 		}
 	}

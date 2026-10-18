@@ -1,7 +1,12 @@
 #!/system/bin/sh
 # Shared Android-side checks. Sourced only; every caller holds the same lock.
 fail() { echo "! $*" >&2; exit 1; }
-hash() { sha256sum "$1" | cut -d' ' -f1; }
+hash() {
+  digest=$(sha256sum "$1") || return 1
+  digest=${digest%% *}
+  valid_hash "$digest" || return 1
+  printf '%s\n' "$digest"
+}
 valid_hash() { [ "${#1}" = 64 ] && case "$1" in *[!0-9a-f]*) return 1;; esac; }
 part() {
   n=0; dev=""

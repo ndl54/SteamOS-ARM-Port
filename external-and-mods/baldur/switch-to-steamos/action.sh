@@ -24,7 +24,8 @@ size=$(stat -c %s "$D/linux.img")
 [ "$size" = "$((sectors * 512))" ] && [ "$(head -c 8 "$D/linux.img")" = 'ANDROID!' ] || fail "invalid SteamOS image size/magic"
 backup=$(mktemp -d "$D/boot-backup.XXXXXX")
 dd if="$a" of="$backup/boot_a.img" bs=4096 conv=fsync || fail "backup failed"
-[ "$(hash "$a")" = "$(hash "$backup/boot_a.img")" ] || fail "backup did not verify"
+source_hash=$(hash "$a") && backup_hash=$(hash "$backup/boot_a.img") || fail "cannot hash backup"
+[ "$source_hash" = "$backup_hash" ] || fail "backup did not verify"
 sync
 check_boot
 [ "$(hash "$b")" = "$want_android" ] && [ "$(hash "$D/linux.img")" = "$want_linux" ] || fail "inputs changed"

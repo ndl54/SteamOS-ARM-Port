@@ -1553,36 +1553,11 @@ def shortcut_appid(exe: str, name: str) -> int:
 
 
 def flush_shortcuts_offline() -> None:
-    files = glob.glob(str(HOME / ".local/share/Steam/userdata/*/config"))
-    if not files:
-        return
-    pending = steam_pending()
-    if not pending["add"] and not pending["remove"]:
-        return
-    for cfg_dir in files:
-        path = Path(cfg_dir) / "shortcuts.vdf"
-        try:
-            root = vdf_read(path.read_bytes()) if path.exists() else {"shortcuts": {}}
-        except (ValueError, IndexError):
-            continue
-        items = list(root.get("shortcuts", {}).values())
-        drop_ids = {int(r["appid"]) & 0xFFFFFFFF for r in pending["remove"]}
-        items = [i for i in items if int(i.get("appid", 0)) & 0xFFFFFFFF not in drop_ids]
-        for spec in pending["add"]:
-            exe = f'"{spec["exe"]}"'
-            appid = shortcut_appid(exe, spec["name"])
-            if any(int(i.get("appid", 0)) == appid for i in items):
-                continue
-            items.append({"appid": appid, "AppName": spec["name"], "Exe": exe, "StartDir": f'"{spec["dir"]}"',
-                          "icon": spec["icon"], "ShortcutPath": "", "LaunchOptions": spec["options"],
-                          "IsHidden": 0, "AllowDesktopConfig": 1, "AllowOverlay": 1, "OpenVR": 0,
-                          "Devkit": 0, "DevkitGameID": "", "DevkitOverrideAppID": 0, "LastPlayTime": 0,
-                          "FlatpakAppID": "", "tags": {"0": spec["tag"]}})
-            steam_made(spec["app"], appid & 0xFFFFFFFF)
-        for r in pending["remove"]:
-            steam_gone(r["app"])
-        root["shortcuts"] = {str(i): item for i, item in enumerate(items)}
-        path.write_bytes(vdf_write(root))
+    # Keep owed/drop state until the existing Decky Steam-client API publishes
+    # and acknowledges it. The old offline writer could corrupt shortcuts and
+    # mark entries complete before the file was published. Steam has no shared
+    # file lock; defer instead of racing a client start or guessing an account.
+    return
 
 
 # -------------------------------------------------------------- BIOS ----

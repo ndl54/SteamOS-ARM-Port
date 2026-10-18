@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import fcntl
+import stat
+import tempfile
 import struct
 from pathlib import Path
 from typing import Any
@@ -8,7 +11,7 @@ from typing import Any
 
 def _read_cstring(data: bytes, offset: int) -> tuple[str, int]:
     end = data.index(b"\x00", offset)
-    return data[offset:end].decode("utf-8", errors="replace"), end + 1
+    return data[offset:end].decode("utf-8", errors="strict"), end + 1
 
 
 def pack_vdf_int32(value: int) -> bytes:
@@ -23,16 +26,29 @@ def vdf_int_as_unsigned(value: int) -> int:
     return value & 0xFFFFFFFF
 
 
-def parse_binary_vdf(data: bytes, offset: int = 0) -> tuple[dict[str, Any], int]:
+class UInt64(int):
+    """Retain binary VDF type 7 even when its value fits in 32 bits."""
+
+
+class Snapshot(dict):
+    pass
+
+
+def parse_binary_vdf(data: bytes, offset: int = 0, _depth: int = 0) -> tuple[dict[str, Any], int]:
+    if _depth > 64:
+        raise ValueError("VDF nesting limit exceeded")
     result: dict[str, Any] = {}
     while offset < len(data):
         kind = data[offset]
         offset += 1
         if kind == 0x08:
-            break
+            return result, offset
+        name, _ = _read_cstring(data, offset)
+        if name in result:
+            raise ValueError(f"Duplicate VDF key: {name!r}")
         if kind == 0x00:
             name, offset = _read_cstring(data, offset)
-            child, offset = parse_binary_vdf(data, offset)
+            child, offset = parse_binary_vdf(data, offset, _depth + 1)
             result[name] = child
         elif kind == 0x01:
             name, offset = _read_cstring(data, offset)
@@ -47,16 +63,24 @@ def parse_binary_vdf(data: bytes, offset: int = 0) -> tuple[dict[str, Any], int]
             name, offset = _read_cstring(data, offset)
             (value,) = struct.unpack_from("<Q", data, offset)
             offset += 8
-            result[name] = value
+            result[name] = UInt64(value)
         else:
             raise ValueError(f"Unsupported VDF type 0x{kind:02x} at offset {offset - 1}")
-    return result, offset
+    raise ValueError("Truncated VDF object")
 
 
 def emit_binary_vdf(node: dict[str, Any]) -> bytes:
     out = bytearray()
     for key, value in node.items():
-        if isinstance(value, dict):
+        if not isinstance(key, str) or "\0" in key:
+            raise ValueError("Invalid VDF key")
+        if isinstance(value, str) and "\0" in value:
+            raise ValueError("NUL in VDF string")
+        if isinstance(value, UInt64):
+            out.append(0x07)
+            out.extend(key.encode("utf-8") + b"\x00")
+            out.extend(struct.pack("<Q", value))
+        elif isinstance(value, dict):
             out.append(0x00)
             out.extend(key.encode("utf-8") + b"\x00")
             out.extend(emit_binary_vdf(value))
@@ -115,6 +139,8 @@ def repair_shortcut_paths(tree: dict[str, Any]) -> int:
             if field not in entry:
                 continue
             old = entry[field]
+            if not isinstance(old, str):
+                raise ValueError(f"Invalid shortcut {field}")
             new = normalize_steam_path_field(old)
             if new != old:
                 entry[field] = new
@@ -143,22 +169,87 @@ def default_shortcut_fields(app_id: int, app_name: str, exe: str, start_dir: str
     }
 
 
+def _read_regular(path: Path) -> bytes | None:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd, "rb") as f:
+        info = os.fstat(f.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 16 * 1024 * 1024:
+            raise ValueError("VDF must be a regular file smaller than 16 MiB")
+        return f.read()
+
+
+def require_steam_closed() -> None:
+    proc = Path("/proc")
+    if not proc.is_dir():
+        raise RuntimeError("Offline Steam check requires Linux /proc")
+    for p in proc.glob("[0-9]*/comm"):
+        try:
+            if p.read_text().strip() in {"steam", "steamwebhelper"}:
+                raise RuntimeError("Close Steam before editing its VDF files")
+        except FileNotFoundError:
+            pass
+
+
 def load_shortcuts(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {"shortcuts": {}}
-    data = path.read_bytes()
-    if not data:
-        return {"shortcuts": {}}
-    parsed, _ = parse_binary_vdf(data)
-    if "shortcuts" not in parsed:
-        parsed = {"shortcuts": parsed}
-    return parsed
+    data = _read_regular(path)
+    if data is None:
+        parsed = {"shortcuts": {}}
+    else:
+        try:
+            parsed, end = parse_binary_vdf(data)
+        except (struct.error, UnicodeError, IndexError) as exc:
+            raise ValueError("Malformed VDF; original preserved") from exc
+        if end != len(data) or not isinstance(parsed.get("shortcuts"), dict):
+            raise ValueError("Invalid shortcuts root or trailing VDF data")
+    tree = Snapshot(parsed)
+    tree.source_path = path.absolute()
+    tree.source_bytes = data
+    return tree
 
 
 def save_shortcuts(path: Path, tree: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # Cooperating writers serialize; snapshots also catch intervening edits.
+    # Steam does not honor this lock, hence the explicit offline-only checks.
+    if not isinstance(tree, Snapshot) or tree.source_path != path.absolute():
+        raise ValueError("Load the original VDF before saving")
     payload = emit_binary_vdf(tree)
-    path.write_bytes(payload)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "a+b") as lock:
+        if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
+            raise ValueError("Invalid VDF lock")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        require_steam_closed()
+        if _read_regular(path) != tree.source_bytes:
+            raise RuntimeError("VDF changed since it was loaded; reload first")
+        if tree.source_bytes is not None:
+            backup_fd, _ = tempfile.mkstemp(prefix=path.name + ".backup-", dir=path.parent)
+            with os.fdopen(backup_fd, "wb") as backup:
+                backup.write(tree.source_bytes)
+                backup.flush()
+                os.fsync(backup.fileno())
+        tmp_fd, tmp = tempfile.mkstemp(prefix=path.name + ".new-", dir=path.parent)
+        try:
+            with os.fdopen(tmp_fd, "wb") as output:
+                output.write(payload)
+                output.flush()
+                os.fsync(output.fileno())
+            require_steam_closed()
+            if _read_regular(path) != tree.source_bytes:
+                raise RuntimeError("VDF changed during save")
+            os.replace(tmp, path)
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            tree.source_bytes = payload
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
 
 
 def next_shortcut_index(shortcuts_root: dict[str, Any]) -> str:
@@ -210,10 +301,6 @@ def add_shortcut(
 
     if "tags" not in shortcuts:
         shortcuts["tags"] = {}
-
-    backup = shortcuts_path.with_suffix(".vdf.bak")
-    if shortcuts_path.is_file():
-        backup.write_bytes(shortcuts_path.read_bytes())
 
     save_shortcuts(shortcuts_path, tree)
     os.chmod(shortcuts_path, 0o644)

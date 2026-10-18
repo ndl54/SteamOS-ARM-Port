@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <mutex>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unistd.h>
@@ -30,8 +31,8 @@ namespace gamescope
 
 	static ConVar<float> cv_backlight_max_nits(
 		"backlight_max_nits",
-		500.0f,
-		"Unused: the top is learned from what Steam sends (kept for configs that set it)." );
+		0.0f,
+		"Explicit internal-panel Steam brightness endpoint in nits; 0 disables uncalibrated nits requests. Never learned from samples." );
 
 	static ConVar<float> cv_backlight_min_nits(
 		"backlight_min_nits",
@@ -213,73 +214,6 @@ namespace gamescope
 			sFile.c_str(), s_nMax, nCurrent );
 	}
 
-	// Steam sends GAMESCOPE_INTERNAL_DISPLAY_BRIGHTNESS in nits, scaled to a
-	// top it derives from the panel. Panels without a gamescope display profile
-	// have no known top: mapping to a fixed 500 nits left Steam's 100 % short of
-	// full brightness (Legion Y700 Gen 4 testers), and the old 1-100 "percent"
-	// branch read low nits values as percentages (too bright, then a jump).
-	// Learn a top from Steam's values and retain it across sessions. The
-	// growth guard below rejects large jumps; this is not panel calibration.
-	static float s_flTopNits = 0.0f;
-
-	static std::string TopNitsFile()
-	{
-		const char *pszState = getenv( "XDG_STATE_HOME" );
-		const char *pszHome = getenv( "HOME" );
-		if ( pszState && *pszState )
-			return std::string( pszState ) + "/gamescope/backlight-top-nits-2";
-		if ( pszHome && *pszHome )
-			return std::string( pszHome ) + "/.local/state/gamescope/backlight-top-nits-2";
-		return {};
-	}
-
-	static void LoadTopNits()
-	{
-		static bool s_bLoaded = false;
-		if ( s_bLoaded )
-			return;
-		s_bLoaded = true;
-		const std::string sFile = TopNitsFile();
-		if ( sFile.empty() )
-			return;
-		std::ifstream f( sFile );
-		float flTop = 0.0f;
-		if ( f >> flTop && std::isfinite( flTop ) && flTop > 1.0f )
-			s_flTopNits = flTop;
-	}
-
-	static void SaveTopNits()
-	{
-		const std::string sFile = TopNitsFile();
-		if ( sFile.empty() )
-			return;
-		std::error_code ec;
-		std::filesystem::create_directories( std::filesystem::path( sFile ).parent_path(), ec );
-		std::ofstream f( sFile, std::ios::trunc );
-		if ( f )
-			f << s_flTopNits << "\n";
-	}
-
-	static float SteamValueToNormalized( float flVal )
-	{
-		if ( flVal <= 1.0f )
-			return std::clamp( flVal, 0.0f, 1.0f );
-
-		LoadTopNits();
-		// One stray value (an external monitor's or an HDR range) must not
-		// become the top for good: then Steam's 100 % stayed dim on the panel
-		// (Legion Y700 Gen 4 tester). A new top is taken only within 1.5x of
-		// the old one; a bigger jump is treated as a one-off and capped at 100 %.
-		if ( s_flTopNits <= 1.0f || ( flVal > s_flTopNits && flVal <= s_flTopNits * 1.5f ) )
-		{
-			s_flTopNits = flVal;
-			SaveTopNits();
-		}
-		const float flMin = std::clamp( float( cv_backlight_min_nits ), 0.0f, s_flTopNits * 0.5f );
-		const float flNorm = std::clamp( ( flVal - flMin ) / std::max( 1.0f, s_flTopNits - flMin ), 0.0f, 1.0f );
-		s_BacklightLog.infof( "Steam brightness %.1f nits -> %.0f%% (top %.1f nits)", flVal, flNorm * 100.0f, s_flTopNits );
-		return flNorm;
-	}
 
 	bool SetBacklightNormalized( float flNorm )
 	{
@@ -327,14 +261,27 @@ namespace gamescope
 		return flFloor + ( 1.0f - flFloor ) * std::pow( std::clamp( s_flLastNorm, 0.0f, 1.0f ), 2.2f );
 	}
 
-	bool ApplySteamBrightnessValue( float flVal )
+	bool ApplySteamBrightnessValue( float flVal, float &flColorNits )
 	{
-		// Returning success for an invalid value also lets the atom handler
-		// feed it into color management, even if the backlight did not change.
-		if ( !std::isfinite( flVal ) )
+		// An observed sample cannot identify the protocol endpoint. In
+		// particular, neither the first sample nor a series of small outliers
+		// is calibration. Do not read/write the old shared learned-top file.
+		const float flTop = cv_backlight_max_nits;
+		const float flMin = cv_backlight_min_nits;
+		flColorNits = std::numeric_limits<float>::quiet_NaN();
+		if ( !std::isfinite( flVal ) || flVal < 0.0f )
 			return false;
-
-		const float flNorm = SteamValueToNormalized( flVal );
+		const bool bRange = std::isfinite( flTop ) && flTop > 1.0f &&
+			std::isfinite( flMin ) && flMin >= 0.0f && flMin < flTop;
+		float flNorm = flVal;
+		if ( flVal > 1.0f )
+		{
+			if ( !bRange || flVal > flTop )
+				return false;
+			flNorm = std::clamp( ( flVal - flMin ) / ( flTop - flMin ), 0.0f, 1.0f );
+		}
+		if ( bRange )
+			flColorNits = std::max( 1.0f, flMin + flNorm * ( flTop - flMin ) );
 		return SetBacklightNormalized( flNorm );
 	}
 

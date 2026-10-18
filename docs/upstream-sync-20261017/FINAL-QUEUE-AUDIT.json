@@ -1,0 +1,1658 @@
+[
+  {
+    "index": 1,
+    "source": "f471896fb6e932da06f36e3fa4e4c58d3dae0c87",
+    "report": "docs/upstream-sync-20261017/001-f471896.md",
+    "report_sha256": "b126b0268487d9c94acb1e60f3a74d2fee104dc4e715d4c64ce4ab2234238b5f",
+    "checks": [
+      "Worker: 5 flash-image regression tests passed",
+      "Worker: 7 EVO isolation tests passed",
+      "Worker: bash/sh syntax and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build or hardware validation yet; Linux image/loop/sparse/GRUB/first-boot validation deferred to final build scope"
+    ]
+  },
+  {
+    "index": 2,
+    "source": "670078b9aae77a11d69da061646046d95789e87c",
+    "report": "docs/upstream-sync-20261017/002-670078b.md",
+    "report_sha256": "cde608e3cff0af120282177e184680d56a23058a962c2773a9edbb0c29289936",
+    "checks": [
+      "Worker: 5 tablet and 7 EVO tests passed",
+      "Worker: syntax, config editor, cmdline/fstab, cleanup preservation and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build or hardware validation; full kernel/patch, Linux image, firmware and boot validation deferred"
+    ]
+  },
+  {
+    "index": 3,
+    "source": "03c1ee9efd8da04ae69b70b56b8308de3176d2fd",
+    "report": "docs/upstream-sync-20261017/003-03c1ee9.md",
+    "report_sha256": "a07ff07cf5e1093664bf5c6a67be85b5697100364b148d689b3e143455edbb3e",
+    "checks": [
+      "Worker: 7 tablet plus 7 EVO tests passed",
+      "Worker: syntax, regression reproduction, source comparison, cleanup preservation and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build or hardware validation; EFI/GRUB chainload, actual install and panel boot remain unverified"
+    ]
+  },
+  {
+    "index": 4,
+    "source": "d8e4df8f24279dd3ec337e066522778e8b83f05c",
+    "report": "docs/upstream-sync-20261017/004-d8e4df8.md",
+    "report_sha256": "e6698ffb337430dcbe578e50059d8d13060841d24ed47d0be54f4b366d16b257",
+    "checks": [
+      "Worker: 7 tablet plus 7 EVO tests passed",
+      "Worker: syntax, upstream regression reproduction, pinned DTS/config probes, cleanup/source comparisons and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; optional wrapper patch/config/module/template behavior unverified",
+      "Optional builder requires native ARM64 Linux; kernel/template/dependency and final build validation deferred"
+    ]
+  },
+  {
+    "index": 5,
+    "source": "f4629a74e3884d50e6cd0620bbe2ab3212503d80",
+    "report": "docs/upstream-sync-20261017/005-f4629a7.md",
+    "report_sha256": "7d1e27c34c6d1cbf913253137c25ed0bd8835d8d44d511ac3a0d7058acdf5fdb",
+    "checks": [
+      "Worker: 10 tablet plus 7 EVO tests passed",
+      "Worker: regression failures reproduced, syntax, cleanup/source comparisons and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; BusyBox binary, real loop/autoclear/systemd behavior and kernel config need final image validation",
+      "FAST prepared-cache check is not provenance verification"
+    ]
+  },
+  {
+    "index": 6,
+    "source": "ef278bee0247ec9a978851d8b944ea1d72d88322",
+    "report": "docs/upstream-sync-20261017/006-ef278be.md",
+    "report_sha256": "16a849a966aea6fffd37cf3062e38183c59a64021aa289be7c3d378a3fdf998e",
+    "checks": [
+      "Worker: 10 tablet plus 7 EVO tests passed",
+      "Worker: five mask fixture states run twice, upstream regression reproduction, syntax and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; systemd activation, real OverlayFS semantics and partition behavior remain unverified"
+    ]
+  },
+  {
+    "index": 7,
+    "source": "18f5585e94036988251049c884a51f1264a572f1",
+    "report": "docs/upstream-sync-20261017/007-18f5585.md",
+    "report_sha256": "477412da1283d57d1246d2b5996f0e96c155157648fc6953be891d0b824f5024",
+    "checks": [
+      "Worker: 10 tablet plus 7 EVO tests passed",
+      "Worker: 20 mask fixture runs, upstream regression reproduction, syntax, source preservation and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; real OverlayFS/systemd and partition behavior remain unverified",
+      "SUPER_ONLY cannot retrofit masks into existing userdata"
+    ]
+  },
+  {
+    "index": 8,
+    "source": "20f68b7b3fcda662c59460e7bba3d18a162b7795",
+    "report": "docs/upstream-sync-20261017/008-20f68b7.md",
+    "report_sha256": "0eba5ab0615a63e643a89d1f24009866cc02cb4e8ca8f7037000739dbc4ad862",
+    "checks": [
+      "Worker: 7 EVO isolation tests and 24 configuration fixture runs passed",
+      "Worker: upstream regressions reproduced, matrix arithmetic, syntax/source preservation/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; real udev/libinput/KWin behavior unverified",
+      "Gamescope currently ignores pen/tablet-tool; revisit rotation if SPI connector association changes"
+    ]
+  },
+  {
+    "index": 9,
+    "source": "17af9a373244e0abd312c2d72c99473b67e9a2f3",
+    "report": "docs/upstream-sync-20261017/009-17af9a3.md",
+    "report_sha256": "b2f5084985fdb362b56ca28d20d891796ee993b587b7c33cc0c063c1d61f3ccc",
+    "checks": [
+      "Worker: 7 EVO tests and 16 mocked shell probes passed",
+      "Worker: upstream regressions reproduced, collector byte preservation, syntax/scope/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; actual USB/FAT/exFAT/systemd and early mount handover unverified",
+      "Shell trap cleanup cannot cover SIGKILL, stalled I/O, power loss or concurrent manual invocations"
+    ]
+  },
+  {
+    "index": 10,
+    "source": "e556568ade1fe23f0b5a5109efd6d39faeb9c8c3",
+    "report": "docs/upstream-sync-20261017/010-e556568.md",
+    "report_sha256": "325a0c97e8a1bb21a4fc55a67192c010436128fc91a31ab2f80df519d1a4bf93",
+    "checks": [
+      "Worker: firmware/boot fixtures, 24 KWin runs and 7 EVO tests passed",
+      "Worker: upstream regression reproduction, syntax/AST/scope/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; firmware compatibility, complex Android super layouts and image utilities unverified",
+      "Bundle updates not transactional; unknown LP/snapshot/checksum cases remain unsupported; CDSP disabled and pen support not established"
+    ]
+  },
+  {
+    "index": 11,
+    "source": "0e106d3bcb176a463e674b15869c5d34998d89e8",
+    "report": "docs/upstream-sync-20261017/011-0e106d3.md",
+    "report_sha256": "4b93875694f3dd19bba7c5898cdb6be933ed3fc7aa0dc23e85f8347fd982d2e9",
+    "checks": [
+      "Worker: 7 EVO isolation and 10 EVO session tests passed",
+      "Worker: UCM, seven UCSI cases, helper gates, checksum/cache probes, syntax/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; actual ALSA/UCM/kernel/USB behavior unverified",
+      "Persistent tablet camera override can survive rootfs relocation to another board; later USB-C corrections remain pending"
+    ]
+  },
+  {
+    "index": 12,
+    "source": "96b4176c474457d40bb58eae1fd772553969d8e6",
+    "report": "docs/upstream-sync-20261017/012-96b4176.md",
+    "report_sha256": "b051187c12c32d1703c713f3b123899e916663a16bf943be02d26fdd1219cec1",
+    "checks": [
+      "Worker: 7 isolation tests, 20 argument cases and 17 mocked screen/collector scenarios passed",
+      "Worker: console priority probe, byte-preservation, syntax/AST/scope/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; actual systemd/VT/display/timing behavior unverified",
+      "Explicit screen mode stops display manager and remains active; no automatic session restoration"
+    ]
+  },
+  {
+    "index": 13,
+    "source": "f66fb8e315abc9859ecbf24848179f9ad15956a2",
+    "report": "docs/upstream-sync-20261017/013-f66fb8e.md",
+    "report_sha256": "836c30d57f31c49f50bb963320b72c7d7ae7d5776fac5af29d6d9960e988e644",
+    "checks": [
+      "Worker: 7 isolation tests, 20 activation checks and 17 screen/collector cases passed",
+      "Worker: full page-cycle/filter boundaries, byte preservation, syntax/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; screen readability/VT behavior unverified",
+      "First 75 matching messages and 118-character cap can omit display information"
+    ]
+  },
+  {
+    "index": 14,
+    "source": "f66af469c328140779438d1509c0627b2d40e59f",
+    "report": "docs/upstream-sync-20261017/014-f66af46.md",
+    "report_sha256": "19526396e0e15044901b88fe2984f3a6d4e11f1df02baafaa7fcab84f24cc562",
+    "checks": [
+      "Worker: archive/file checksums, copy/idempotence/isolation, corrupt-cache and cmdline probes passed",
+      "Worker: 7 EVO isolation tests, syntax/byte-preservation/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; Bluetooth controller initialization, pairing/audio/suspend and region suitability unverified"
+    ]
+  },
+  {
+    "index": 15,
+    "source": "8af5b8872f248e7d8e8b70448aa61a7117a5d344",
+    "report": "docs/upstream-sync-20261017/015-8af5b88.md",
+    "report_sha256": "37e92d8723b27945deea434e16145cafb6497d20dd681555a014bc636b349b76",
+    "checks": [
+      "Worker: 117 board/override fixtures and 7 EVO isolation tests passed",
+      "Worker: shell syntax, seven C++ function byte comparisons and diff checks passed; C++ source review only, no compile",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; changed Gamescope C++ needs final compile/link and Vulkan/KMS validation",
+      "8-bit is composition preference with fallback; linear scanout support/performance unverified"
+    ]
+  },
+  {
+    "index": 16,
+    "source": "26009524a36da10ac40ba3ef55e942c74c9714e9",
+    "report": "docs/upstream-sync-20261017/016-2600952.md",
+    "report_sha256": "6816fb31dcf393f47ca348e5c54ede8bd8e8667c1b626ecc3fc35873ad81837b",
+    "checks": [
+      "Worker: 10 tablet and 7 EVO tests, four actual fstab fragment cases passed",
+      "Worker: exact source delta, syntax and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; effective FAT permissions/loop handover unverified",
+      "SUPER_ONLY and existing userdata do not acquire the new fstab automatically"
+    ]
+  },
+  {
+    "index": 17,
+    "source": "2adca570fb1ae204852ea61fa4208f71dc23e6b9",
+    "report": "docs/upstream-sync-20261017/017-2adca57.md",
+    "report_sha256": "ef8d05393c1db62f77c7234d2d3d9a1eb9469d471c47b7078a5867ec0c2fb0b6",
+    "checks": [
+      "Worker: 7 EVO isolation tests, board grep fixtures and 11 static selector cases passed",
+      "Worker: syntax, byte-preservation and diff checks passed; no udevadm runtime",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; Linux udev/UDisks/KDE and controller behavior unverified",
+      "PowerOff hint does not prevent manual calls or Eject; busy/logging mounts still matter"
+    ]
+  },
+  {
+    "index": 18,
+    "source": "475877dff99b249cb522683e7fec05769f9bf0f0",
+    "report": "docs/upstream-sync-20261017/018-475877d.md",
+    "report_sha256": "c123aab3337202f7649a6c45eadb1b0889e5e4eaeb3801eaf026ad8f5319dd25",
+    "checks": [
+      "Worker: 12 board/error fixtures and 12 existing session/isolation tests passed",
+      "Worker: AST/shell syntax, helper byte preservation and diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; actual systemd/PipeWire/ALSA behavior and speaker volume unverified",
+      "FIT card-zero assumption and persistent user overrides remain runtime dependencies"
+    ]
+  },
+  {
+    "index": 19,
+    "source": "6a5c3d8298094d35eae5d7e742e882a636df2fdf",
+    "report": "docs/upstream-sync-20261017/019-6a5c3d8.md",
+    "report_sha256": "07c302020215c1c0add9a01fe5812659764388aa900e2cede159c48d39388c2f",
+    "checks": [
+      "Worker: 29 helper/selection/planner fixtures and three AST parses passed",
+      "Worker: exact source equality and diff checks passed; no package generation or bytecode compilation",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/deploy; signed-package recovery, Linux xattrs and device compatibility unverified",
+      "Targeted timestamp-pyc handling does not cover arbitrary cache formats or device mutations"
+    ]
+  },
+  {
+    "index": 20,
+    "source": "b0631e326fcf50b9f7cfc88a6d0f533162af5096",
+    "report": "docs/upstream-sync-20261017/020-b0631e3.md",
+    "report_sha256": "f1de970141dfbfba2f53c5f2a177369210df90bb69dfa3002016c2ca73fc2bcf",
+    "checks": [
+      "Worker: 20 activation, 20 screen/collector and 23 session/parser cases passed",
+      "Worker: 7 isolation tests, byte preservation, syntax/diff checks passed",
+      "Coordinator: source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/hardware validation; real SDDM/OverlayFS/DRM behavior unverified",
+      "Older initramfs may retain Desktop override; raw KMS snapshot is volatile and I/O may stall"
+    ]
+  },
+  {
+    "index": 21,
+    "source": "18f17bac43f59d23e162e730d2c2feb0bc0e4138",
+    "report": "docs/upstream-sync-20261017/021-18f17ba.md",
+    "report_sha256": "5b835dde7c53536e99b450e743c85ff8d709a1508375a914bb419e93f241bc1c",
+    "checks": [
+      "Worker: 29 mocked upload and 18 activation scenarios passed; original source failures reproduced",
+      "Worker: screen and Desktop regression fixtures plus 7 EVO isolation tests, syntax and diff checks passed",
+      "Coordinator: review report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No real upload, build or device testing; Linux privileges/systemd, image tools and provider API remain unverified",
+      "Upload opt-in sends unredacted logs; archive resource limits and end-to-end preparation timeout absent"
+    ]
+  },
+  {
+    "index": 22,
+    "source": "c48499034ac584c733b7dfceead1c2adb5f25ced",
+    "report": "docs/upstream-sync-20261017/022-c484990.md",
+    "report_sha256": "b2519694a171bb19a8eec0c9601c0a6f58039a7fc3b806547fcb1ffc5843955a",
+    "checks": [
+      "Worker: source lifecycle/control-flow review, preservation comparisons, dependency/merge-parent and diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No C++ compile or runtime tests; final build must compile/link changed Gamescope units and exercise delayed/error/disconnected PipeWire",
+      "Early capture clients may need rebind; existing detached-worker runtime teardown/buffer lifetime and pipe cleanup risks remain"
+    ]
+  },
+  {
+    "index": 23,
+    "source": "7bb4a1577c4875d222b0a44b8261442a7d689706",
+    "report": "docs/upstream-sync-20261017/023-7bb4a15.md",
+    "report_sha256": "b9b09fc64e8a13f2fe816d31d16693b3f17ee0cd9c3dbf7982574a3e5b41e711",
+    "checks": [
+      "Worker: shell/AST, firmware and mocked recovery probes, 7 EVO isolation and 10 session tests passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device tests; real PCI/module/firmware/radio timing unverified",
+      "Recovery only on changed firmware files; no continuous retry; kernel/I/O may exceed polling budget; inherited extraction limits persist"
+    ]
+  },
+  {
+    "index": 24,
+    "source": "d4db02997d48a97c40f2ffb505f0bc07c024a55c",
+    "report": "docs/upstream-sync-20261017/024-d4db029.md",
+    "report_sha256": "db2088c66aedb546039670bf7474fb5b9690097c4e2fa0b49f1d9dfd983c8306",
+    "checks": [
+      "Worker: shell syntax, 90 synthetic udev matching cases, file permissions and mocked installer argv, source scope/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/native udev/device validation; video group membership and coldplug/Gamescope timing unverified",
+      "Hardware-name rule also matches other AW99706 boards; late permissions do not repair Gamescope failed initial open"
+    ]
+  },
+  {
+    "index": 25,
+    "source": "e51099c7e350b0a2f6417c90537a7b4a8a01fe8d",
+    "report": "docs/upstream-sync-20261017/025-e51099c.md",
+    "report_sha256": "685d2d538ecfc8019f4883773011aeb14e5debba149cbad4a6d6bc89eaa56426",
+    "checks": [
+      "Worker: shell/AST, hotfix staging/runtime mocks, wrapper/init contracts, uploader/Desktop/KMS/USB probes and 17 EVO/tablet tests passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device tests; BusyBox applets, tmpfs/bind lifetime, switch_root/systemd and target permissions require validation",
+      "Hotfix etc snapshot discards all same-boot etc writes on reboot; RAM budget absent, partial failure halts boot and requires bypass/reboot",
+      "Trusted operator payload; hashes are integrity metadata not signatures; existing archive/provider limitations persist"
+    ]
+  },
+  {
+    "index": 26,
+    "source": "957f1fbe37b246c99c0384a32fa392fa34340b12",
+    "report": "docs/upstream-sync-20261017/026-957f1fb.md",
+    "report_sha256": "56f8b458e8f9bcddf221413ba83c756ceca9447ff6c36e18ee948c277908273d",
+    "checks": [
+      "Worker: shell/diff, 44 synthetic probes and 16 EVO isolation/session tests passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/install/device validation; final build needs ECM >=6.14 and actual ABI/QML/dependency/staging verification",
+      "Optional missing default bundle may omit Bluetooth; trusted unsigned archive/source caches and nontransactional extraction persist",
+      "BlueZ permissions/OBEX and Wayland KScreen/KWin behavior need runtime validation"
+    ]
+  },
+  {
+    "index": 27,
+    "source": "82f012a7c9b9a65b46ebfd3d619f3e5fdd38cd07",
+    "report": "docs/upstream-sync-20261017/027-82f012a.md",
+    "report_sha256": "0599324e3df116826e07a0c65e865ac3ea5814ef74ebc61756275ecccc9ae81f",
+    "checks": [
+      "Worker: shell/env, 7 isolation tests, six recipe cmdlines, pinned DT thermal labels/cooling maps/config and preservation/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device tests; actual WirePlumber/systemd, final DTB/module config, decoder fallback and thermal/suspend require validation",
+      "Camera fragment persists across board migration and affects external cameras/portal permission store; no live WirePlumber reload",
+      "Existing Gamescope capture teardown and SM8750 GPU daemon interactions remain unvalidated"
+    ]
+  },
+  {
+    "index": 28,
+    "source": "0eacbe727e544d0b9d807836b6c93c0ea674bace",
+    "report": "docs/upstream-sync-20261017/028-0eacbe7.md",
+    "report_sha256": "d5858928ca169c805fa128f52ae5a6e5506ae4f79795ea3faf4cc0cb183d8d08",
+    "checks": [
+      "Worker: 173 shell mocks, 23 boot/session fixtures, 7 isolation and 10 session tests plus syntax/preservation/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device testing; manager/SDDM/logind permissions, persistence and actual session/reboot routing require validation",
+      "Multi-call partial preferences not rolled back; direct calls bypass wrapper; terminal-less errors may not be visible",
+      "Forced cmdline, old initramfs/SDDM overrides and actual tmpfs mount representation remain runtime concerns"
+    ]
+  },
+  {
+    "index": 29,
+    "source": "0b84467dbe22f6c5a2f82dee98ead774542b4643",
+    "report": "docs/upstream-sync-20261017/029-0b84467.md",
+    "report_sha256": "3a78ce1bf7c564f58494abab2995b120c1c2d2e980d9ac871c437f448feac124",
+    "checks": [
+      "Worker: 264 extracted-shell cases, syntax, source/resource-flow review and byte-preservation/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No C++ compile/runtime/device tests; final build and feedback/explicit-sync/owner-loss lifecycle validation required",
+      "Scale is startup-only not per-monitor; null guard does not fix dangling Xwayland lifetime or DRM wake recovery",
+      "Existing PipeWire teardown and pending surface-destruction feedback risks remain"
+    ]
+  },
+  {
+    "index": 30,
+    "source": "7a750de6f41c9cb25b97762435e059f2bd5fa003",
+    "report": "docs/upstream-sync-20261017/030-7a750de.md",
+    "report_sha256": "ba986e8b187990a3f71bdb54c93156e7df15ed7f93acc21b0cc2e6d69e5671ed",
+    "checks": [
+      "Worker: audio rule model, GPIO/USB mocks, staging/UCM/ADSP probes, 17 EVO tests, checksum/syntax/preservation/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device validation; actual audio profiles/topology, libgpiod2/systemd/udev versions and authorization require checks",
+      "USB simultaneous ports/mux/charger/PC/analog policy and suspend unverified; final partner/write race remains",
+      "Persistent etc overrides and user audio profiles can supersede defaults"
+    ]
+  },
+  {
+    "index": 31,
+    "source": "d537a4fe9751cd51ea01eef6b00a966a8967c4ca",
+    "report": "docs/upstream-sync-20261017/031-d537a4f.md",
+    "report_sha256": "0ef88f23252b74ec8e2665f79af6d41acf733aeb5741f0972e3ec88af0bd016d",
+    "checks": [
+      "Worker: checksum topology/UCM/selector/rule and USB/ADSP mocks, 17 EVO tests, syntax/preservation/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device testing; real PCM/control/UCM parsing, playback/capture and amp gain require validation",
+      "Speaker-first default does not ensure automatic headphone profile selection; stored profiles and persistent etc can override",
+      "Inherited USB/Bluetooth/suspend hardware uncertainty persists"
+    ]
+  },
+  {
+    "index": 32,
+    "source": "96e863596e98912daf8c53f7a95f73ae52bfa671",
+    "report": "docs/upstream-sync-20261017/032-96e8635.md",
+    "report_sha256": "3873ec1b5a0a2688ad4220a9497fff2e2301528c3f774cc48cb1d37c34955904",
+    "checks": [
+      "Worker: pinned dependency/lifecycle source review, byte reconstruction, scope and diff checks passed; no C++ compile/test claimed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device validation; keyboard grabs/modifiers/IME/constraints, X11/XDG destruction and wake require tests",
+      "Null guard does not ensure non-null pointer lifetime, clear every no-window transition or repair DRM/PipeWire teardown"
+    ]
+  },
+  {
+    "index": 33,
+    "source": "89474e83b0db45646d2411409d3d469d727a5966",
+    "report": "docs/upstream-sync-20261017/033-89474e8.md",
+    "report_sha256": "70c0971a54a2f4d6f1947d61cde3a08f972bc8f6cf51c35bae939a0574713fda",
+    "checks": [
+      "Worker: 15 fully mocked regression tests, all nine chip/action template syntax checks and scope/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/packaging/Android/device/flash tests; actual root tools/SELinux/FUSE/secure boot unverified",
+      "Legacy/partial backups preserved but require independently verified recovery; hashes not device-bound",
+      "Two-slot writes non-atomic; concurrent execution/power failure remain risks"
+    ]
+  },
+  {
+    "index": 34,
+    "source": "dce6da4b93afb611f3cc824444c21bc0080baa03",
+    "report": "docs/upstream-sync-20261017/034-dce6da4.md",
+    "report_sha256": "a9b3950ccd1d4bd0bcb2ccad35794ca530ac9d654efb134282f313b0a4d40ca5",
+    "checks": [
+      "Worker: 14 synthetic producer/migration/failure tests, AST and scope/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; KWin normalization, model/orientation and actual touch/display require verification",
+      "Ambiguous/missing seed metadata left unchanged; exact indistinguishable user seed cannot prove provenance",
+      "Per-file atomic rename not fsync/multi-file transaction; concurrent writers not locked"
+    ]
+  },
+  {
+    "index": 35,
+    "source": "5f4463b25a8ec6ffa42861203408a8c215f70e1c",
+    "report": "docs/upstream-sync-20261017/035-5f4463b.md",
+    "report_sha256": "d446942dadd1c9c29fd8d5bd760bed08510f6e4cf503775243613c9cc43176a7",
+    "checks": [
+      "Worker: shell syntax, 8 environment/argument probes, C++ lifecycle source review and byte/scope/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No C++ compile/device validation; atomic route/format/flip, hotplug/HDR/rotation and monitor behavior require validation",
+      "Cached touch connector lifetime and headless physical last-frame retention remain open",
+      "No atomic-failure alternate route retry; startup scaling and prior PipeWire/Wayland lifetime risks persist"
+    ]
+  },
+  {
+    "index": 36,
+    "source": "a40ab4c99d621001f8afc3ee4c5d8475a0e022e2",
+    "report": "docs/upstream-sync-20261017/036-a40ab4c.md",
+    "report_sha256": "0243851df7466e65760fe6598692a48400541bf0637503b532eb9b30d790269a",
+    "checks": [
+      "Worker: 14 USB, 12 session-policy and 4 controller mock/PTY tests, syntax/AST/map/preservation/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; PCI firmware/USB input hotplug, key mappings/duplicates and sleep reliability unverified",
+      "Storage snapshot/hotplug race and kernel-blocked sysfs remain; failed pre does not veto suspend; runtime journal not reboot-persistent",
+      "Storage-bearing hosts stay bound; USB ID is not evdev readiness; identical external VID/PID keyboard also excluded"
+    ]
+  },
+  {
+    "index": 37,
+    "source": "8f1b668658f5ad8a6abee267dbaaaa33e688e9dd",
+    "report": "docs/upstream-sync-20261017/037-8f1b668.md",
+    "report_sha256": "722853ba14240b2a715ddb3a4214dcea7f7f3c017426a0eb35bbdc65732a8609",
+    "checks": [
+      "Worker: 10 daemon mocks, volume-key fixture, 13 EVO session tests, AST/syntax/source-delta/diff checks passed",
+      "Coordinator: read report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device evidence of dropout fix; actual gain/timing/jack/suspend remain unverified",
+      "Inherited command exit status and cached digital-state limitations can suppress retry; card/node assumptions remain"
+    ]
+  },
+  {
+    "index": 38,
+    "source": "dd36e446e43252bbf8795fcf110b9010f07ffb16",
+    "report": "docs/upstream-sync-20261017/038-dd36e44.md",
+    "report_sha256": "6610005e27c6d3590295c7d506de94b795cf3e88b4a9432768466aa8309623a5",
+    "checks": [
+      "Worker: 12 mock and harmless-child/cleanup checks passed; prior regressions reproduced",
+      "Worker: Python AST, Bash syntax, source preservation and diff checks passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build or device/GTK/polkit validation",
+      "Session loss/forced kill can leave privileged child running; stalled installer has no destructive timeout/cancel; temporary logs consume disk and may expire at reboot"
+    ]
+  },
+  {
+    "index": 39,
+    "source": "beffbe832e6f53a3a1e7489feae7f35899e73fb2",
+    "report": "docs/upstream-sync-20261017/039-beffbe8.md",
+    "report_sha256": "ebe78a89ca453775b684d55028a3b7a4048c9bb8a58fa7ac8297604362d5474a",
+    "checks": [
+      "Worker: seven MangoHud v0.8.4 patches applied with fuzz=0 and no offsets",
+      "Worker: seven shell log fixtures, relevant EVO isolation test and shell syntax passed",
+      "Worker: collector byte preservation passed; unchanged upstream patch whitespace exception documented",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build or device validation; selected hwmon can bypass fallback and cached sensor is not reselected",
+      "Per-core fallback follows directory order, not hottest; raw charging logs are not measured power inference; sysfs reads have no timeout"
+    ]
+  },
+  {
+    "index": 40,
+    "source": "1187459d9dba6eb830e301e7937c1d43a0750880",
+    "report": "docs/upstream-sync-20261017/040-1187459.md",
+    "report_sha256": "0d3dff70f18539642fe92cf16600992ad0327db9ce67271195713616e57e20aa",
+    "checks": [
+      "Worker: eight mock tests passed; stale-read race reproduced before fix",
+      "Worker: AST, diff, product scope and exact unit directive preservation checks passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; actual dual panels, permissions, mount lifecycle, boot/sleep and slider behavior remain unverified",
+      "Lock only serializes daemon threads; external writers and proxy file accesses remain nontransactional; direct bottom override can retain stale digits"
+    ]
+  },
+  {
+    "index": 41,
+    "source": "5c3de54a466b961105f5a08040398159af9dc92b",
+    "report": "docs/upstream-sync-20261017/041-5c3de54.md",
+    "report_sha256": "c992fe93042a6ac01d92271f0c64df309be6bcded81659f52316cd6af669d923",
+    "checks": [
+      "Worker: old Linux-only bundle rejection reproduced; four isolated staging scenarios passed",
+      "Worker: Bash syntax, AST, diff, exact-source region and surrounding fork preservation passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/Android/device validation; restored stack trusts complete uncontaminated stock backup and does not remove arbitrary extra custom libraries",
+      "Only MESA_STACK branch restores reused roots; SM8750 separate path unchanged; actual Lepton/surfaceflinger/GPU startup unverified"
+    ]
+  },
+  {
+    "index": 42,
+    "source": "2d73a6a36471b9f60fc9fe8d9364e25a7c1e812f",
+    "report": "docs/upstream-sync-20261017/042-2d73a6a.md",
+    "report_sha256": "2a4d4ee466878ad206630ac9a4effe9a18c0ba9121cb64caf885ce59844772c3",
+    "checks": [
+      "Worker: premerge omission reproduced; ten SoC/kernel gate combinations and temporary wake attribute probes passed",
+      "Worker: six session, one EVO wake-policy and fourteen USB recovery mock tests passed",
+      "Worker: Bash syntax, staged diff and exact source scope passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device suspend validation; random-wake elimination and real button/GPIO wake unverified",
+      "Existing wake policy does not restore disabled attributes on post; kernel release gating is heuristic and missing attributes skipped"
+    ]
+  },
+  {
+    "index": 43,
+    "source": "6d997f54848e41a1ba415fab2d389f8e5fe1cf29",
+    "report": "docs/upstream-sync-20261017/043-6d997f5.md",
+    "report_sha256": "84b1659b954958389105ba2ab98603c5788a347c860532380e65bbc0aa15d47b",
+    "checks": [
+      "Worker: ten idle-config mocks and fourteen layout-migration tests passed; upstream overwrite and failed-write marker regressions reproduced",
+      "Worker: Bash syntax, Python AST, diff and scope preservation passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; prevents automatic idle DPMS rather than repairing stuck panels; explicit true settings retained and can retain idle issue",
+      "Existing v1 markers suppress retry; real KConfig cascading/immutability and concurrent settings edits unverified; panel staying on increases idle power"
+    ]
+  },
+  {
+    "index": 44,
+    "source": "0307a71d8754506288f37368f81ab13561427982",
+    "report": "docs/upstream-sync-20261017/044-0307a71.md",
+    "report_sha256": "2fa99f76ef67c4759a5dfed200f3e5fd0210545f8487b8ceec7bf197c2d6c261",
+    "checks": [
+      "Worker: eight Node mock tests passed using actual predicates/state callback; parent/source regressions reproduced",
+      "Worker: Node syntax, diff and full other-product preservation checks passed; Qt lint unavailable",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/rendered UI/device validation; focus polling delay, xprop failures/stale/out-of-order snapshots remain",
+      "Repeater arrays/delegates may be recreated each poll; appid fix does not prove elimination of all flicker or stable row identity"
+    ]
+  },
+  {
+    "index": 45,
+    "source": "dafefe9c8e02caccd003d83fa0c9a02366dfdde7",
+    "report": "docs/upstream-sync-20261017/045-dafefe9.md",
+    "report_sha256": "63f4094e2ea0e50f226ab722f1af01a84d05403861a17b9d9c6c595336148798",
+    "checks": [
+      "Worker: seven integration, eight Thor, fourteen Desktop mock tests and four Mesa fixtures passed",
+      "Worker: YAML/TOML/AST/Bash syntax, identity/include/firmware mapping and preservation checks passed",
+      "Worker: two trigger patches applied fuzz 0; ten patch payloads parse and match source; embedded-patch whitespace exceptions documented",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; full kernel/DTB/firmware/ABL chain and binary hash still unverified",
+      "Actual ALSA/mixer/input/display/touch/thermal support unverified; inherited common sleep uses ath12k/chipone while SM8250 has ath11k and board-specific touch",
+      "Persistent upper fixtures do not simulate OverlayFS whiteouts/ownership/live update; Thor generic ADSP versus special firmware selection remains open"
+    ]
+  },
+  {
+    "index": 46,
+    "source": "7fb0e3666277ecc30b52c7c811a32d2a12c81c77",
+    "report": "docs/upstream-sync-20261017/046-7fb0e36.md",
+    "report_sha256": "eb9c2624f6defd49e107866ae9de0acce964b2cd1a5b5f7fa564f58623ea8ce3",
+    "checks": [
+      "Worker: exact source delta reconstruction and other-product byte preservation passed",
+      "Worker: shell syntax and nine extracted configuration cases passed; C++ control flow review only",
+      "Worker: staged diff checks passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; atoi parsing treats true string as false, Steam property UI may disagree with locked policy",
+      "First-route eligibility, atomic recovery, physical headless blanking and cached touch connector pointers remain unresolved"
+    ]
+  },
+  {
+    "index": 47,
+    "source": "8fff81f643fc3345f9c6bde54343ecb6156b9db5",
+    "report": "docs/upstream-sync-20261017/047-8fff81f.md",
+    "report_sha256": "cdd7d0563f2874f4e6aa21d5da3231aa554bf26b6e12819086b61cfbebf7d6c6",
+    "checks": [
+      "Worker: both parent/merge-base review and 34-path reconstruction passed",
+      "Worker: resolved tree equals starting tree before report; two shell syntax checks and staged whitespace passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; all prior product runtime risks remain unchanged",
+      "Source merge had real branch union; this integration is product-content no-op only relative to starting fork"
+    ]
+  },
+  {
+    "index": 48,
+    "source": "9547fd972c38c63a19edfd305f473ddc2f691704",
+    "report": "docs/upstream-sync-20261017/048-9547fd9.md",
+    "report_sha256": "dfa54b7014b36c9631f6a7cac190c1936ebae99207f24a81ccf5f85268ee874e",
+    "checks": [
+      "Worker: 27 mocked fallback/validation/space/cleanup/staging tests passed; upstream substring-retry and cache-clobber regressions reproduced",
+      "Worker: Python AST/Bash syntax, helper/constant/product preservation and whitespace passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/real update/device validation; agent/updater new flags/protocol must ship together",
+      "Space checks estimates not reservations; signature/tar/mount/recovery/power-loss unverified; incomplete transaction can require recovery",
+      "Existing signed managed-tree convergence does not guarantee preservation of fork custom files/binaries under managed paths"
+    ]
+  },
+  {
+    "index": 49,
+    "source": "e10519f3bb5da28226b22bf49c1e42c2c50d2b05",
+    "report": "docs/upstream-sync-20261017/049-e10519f.md",
+    "report_sha256": "552043ec96e7cc9ef4b0cae9f07dafa62f3897653e69e7c524f52e598c34e8e1",
+    "checks": [
+      "Worker: seven lightweight tests passed covering overlay/version/account/builder failure cases; failed-query data-clear regression reproduced",
+      "Worker: Bash syntax, Python AST, whitespace and other-product byte preservation passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/Android/device validation; only two text payload files present, APK/framework binaries absent",
+      "Framework ten-file count is not ABI/provenance validation; fixed remote UID/container paths, concurrent builders and power-loss rename behavior unverified",
+      "Runtime text signatures and whitespace-separated overlay paths remain limitations; image-version match does not prove coherent payload"
+    ]
+  },
+  {
+    "index": 50,
+    "source": "4dc525e6504dfe5e8510217923ca51089ea06f26",
+    "report": "docs/upstream-sync-20261017/050-4dc525e.md",
+    "report_sha256": "e7134f99cfb18351cfdf2d1944b810c4c4a2160df6df4574602e6ab176bd4f40",
+    "checks": [
+      "Worker: six focus/launcher tests and seven Lepton overlay tests passed; duplicate/nested source regressions reproduced",
+      "Worker: Bash syntax, Python AST, runtime-region and other-product preservation, whitespace passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/Android/device validation; actual cgroup/delegation/Wayland/xprop/Steam focus remains unverified; payload absence persists",
+      "Single shared AppId forbids simultaneous independent title ownership; external stop and SIGKILL/power loss can bypass cleanup",
+      "Unknown Lepton signatures warn/skip; inherited query/boot-ready/window lifetime assumptions remain"
+    ]
+  },
+  {
+    "index": 51,
+    "source": "6b256e621cf1764bb66889758f1bc42aaf13c364",
+    "report": "docs/upstream-sync-20261017/051-6b256e6.md",
+    "report_sha256": "6887c4a1a70aad0fcfc78dadd24104342b555230f030563b650cf076b23b200d",
+    "checks": [
+      "Worker: six persistence, six focus and seven overlay tests passed including prior-source regression and partial-publication retry",
+      "Worker: Bash syntax, Python AST, retained-region/product byte comparison and whitespace passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/Android/device validation; already-lost data not restored and old per-launch APK installs may need reinstalling",
+      "Per-file replacement is not cross-file/power-loss transaction; live old containers, concurrent patchers, ACL/xattrs/labels and unknown runtime cleanup paths unverified",
+      "Critical unknown signatures now block startup; APK session response loss/installer-idle race and missing binary payload remain open"
+    ]
+  },
+  {
+    "index": 52,
+    "source": "4d4fc7d422c0ada5671e0227d7878bc3cd238fb0",
+    "report": "docs/upstream-sync-20261017/052-4d4fc7d.md",
+    "report_sha256": "455931b3b3ed8975ea41c59414a772bc23625fef20dacd41794a1d8851233a96",
+    "checks": [
+      "Worker: sixteen release/recovery tests plus twenty-seven updater tests passed; upstream pending/identity/symlink and old rollback regressions reproduced",
+      "Worker: Bash/AST, helper/overlay/product preservation and whitespace passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/live Settings/update/device validation; real service/OverlayFS/metadata/power-loss behavior unverified",
+      "Already-staged private recovery updater is not retrofitted; legacy transaction without backup removes untrusted inventory rather than recovering unknown old version",
+      "Only PRETTY_NAME intentionally changes; default numeric release is build input not inferred from commit; official managed-tree policy remains"
+    ]
+  },
+  {
+    "index": 53,
+    "source": "cc7e070df934db598de20df50737351624f97766",
+    "report": "docs/upstream-sync-20261017/053-cc7e070.md",
+    "report_sha256": "ad88da71b948b3bb2b9f1d4d7f71a1ed7dc3ced74b180f2f4b2cf66f6e1ff0f6",
+    "checks": [
+      "Worker: sixteen existing release tests and twenty-seven updater tests passed",
+      "Worker: AST, exact reverse-substitution byte comparison, scope and whitespace passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/live UI/device validation; all 052/048 runtime, old recovery and official managed-tree limitations remain"
+    ]
+  },
+  {
+    "index": 54,
+    "source": "808d3db49b86a6226cd2146d4ec6ff5b70b86b05",
+    "report": "docs/upstream-sync-20261017/054-808d3db.md",
+    "report_sha256": "e9cfa99fd6c140a324f83803fed8ee25770dd3cc920bbc79727be98b98b4e808",
+    "checks": [
+      "Worker: twenty-two mock tests passed; upstream config/raw-manifest/Flatpak/custom-plugin defects reproduced",
+      "Worker: seventeen Python AST, JSON, shipped JS syntax, shell syntax and whitespace passed",
+      "Worker: binary hash/source equality, exact overlay delta reconstruction and existing-product preservation passed",
+      "Coordinator: report read, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build/GPU/game/device validation; library ABI/dependencies/loader/FEX/Proton/DLL and Decky UI unverified",
+      "Classic Flatpak intentionally unsupported until isolated runtime IDs; profiles manual/global separate from v2 dashboard",
+      "Config/script/artifact publication per-file only; real ownership/watchers/concurrency/power-loss unverified; modified plugins preserved not automatically updated",
+      "Tracked dist directly edited without frontend source/build; Classic default WSI-off can bypass Steam limiter"
+    ]
+  },
+  {
+    "index": 55,
+    "source": "5c761d2145f286f9d5e83a50201b2d4edb6772cc",
+    "report": "docs/upstream-sync-20261017/055-5c761d2.md",
+    "report_sha256": "cd635c48bd89cea6abf569f91c0fa684f05ccb00b676fb54ed2026725b3fb95d",
+    "checks": [
+      "Worker: five targeted patch chains apply with fuzz 0; EVO/shared SM8550 resulting GPU C code equivalent",
+      "Worker: sixty source arithmetic checks and seven recipe configurations passed; shell syntax and patch-aware whitespace checks passed",
+      "Coordinator: report read, source ancestry, clean main, absent MERGE_HEAD, HEAD=origin/main=independent ls-remote verified; next dependency singleton"
+    ],
+    "remaining_issues": [
+      "No compile/build/device tests; full kernel patch stacks, DTS/Kconfig/C API compatibility remain for final validation",
+      "GPU recovery, TE counter hardware wrap/pacing, PM rail ownership, DSI error recovery/concurrency, RTC persistence, Wi-Fi power and Proton performance unverified",
+      "Existing userspace USB/storage race and kernel-blocking I/O limits remain; later UFS/sleep sources require independent overlap review"
+    ]
+  },
+  {
+    "index": 56,
+    "source": "aff9eb2a5432f945eb359e6c04fab05c6012e49d",
+    "report": "docs/upstream-sync-20261017/056-aff9eb2.md",
+    "report_sha256": "08334983201d640134e96ed25250b3f7d7f26beab347bb76965e0135fb5c0a37",
+    "checks": [
+      "Worker: 21 mock regression tests passed; three original source failures independently reproduced",
+      "Worker: three targeted panel patch chains fuzz 0; resulting panel files identical to055; 181 pinned-source hashes verified",
+      "Worker: AST, shell syntax, whitespace, installation/symlink and exact scope checks passed",
+      "Coordinator: report read, clean main/no MERGE_HEAD, source ancestry, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device validation; physical Hz convergence, DRM topology/permissions, DSI recovery, mode races and TE timebase unverified",
+      "flock only covers cooperating helper writers; SIGKILL/power loss/kernel blocking can prevent rollback; three-second sample not long-term pacing proof",
+      "Calibration file binds board/panel type not unit; full kernel/DT/Kconfig/GPU/PM/sleep risks from055 remain"
+    ]
+  },
+  {
+    "index": 57,
+    "source": "f27716284948acda1d45fd774bb3de3549b22692",
+    "report": "docs/upstream-sync-20261017/057-f277162.md",
+    "report_sha256": "304f49b618825a95bc3a8ddba2f7c60422fd76b25fd477ecaeab320c58b07709",
+    "checks": [
+      "Worker: sixteen tablet runtime plus thirteen existing EVO session mock tests passed",
+      "Worker: targeted Elden four-patch and Gen3 eleven-patch source chains pass fuzz0; orientation, FAST stamp and DTS key mapping probes pass",
+      "Worker: shell/Python AST/JS syntax, patch-aware whitespace and preservation assertions pass",
+      "Coordinator: report read, clean main/no MERGE_HEAD, source ancestry, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device tests; full kernel/DTS/Kconfig/compile and LV2 ABI remain deferred",
+      "Audio/UCM/PipeWire policy and multiple-session routing, physical touch/pen, charge/reboot persistence, GPU/TE and thermal behavior unverified",
+      "FAST stamp is recipe identity not arbitrary-tree attestation; prior055/056 concurrency/hardware limits remain"
+    ]
+  },
+  {
+    "index": 58,
+    "source": "2ace34bc2db4ea52a6338804700f2497dea83282",
+    "report": "docs/upstream-sync-20261017/058-2ace34b.md",
+    "report_sha256": "206cb48fba3cf11b117c7d8080de5467894f58b3deb0a062b41ba9f47a9b9d67",
+    "checks": [
+      "Worker: nineteen new SD runtime, sixteen tablet, thirteen EVO session and ten converter mock/fixture tests passed",
+      "Worker: original failed-resize success-marker defect reproduced; syntax/AST/JS/whitespace/scope checks passed",
+      "Coordinator: report read, clean main/no MERGE_HEAD, source ancestry, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device/boot evidence; no complete SD dual-boot image or installer, current recipe/converter remain internal userdata",
+      "Actual util-linux/e2fsprogs/DRM-free storage runtime, GPT/AVB/A-B boot and online resize unverified; backups not tested recovery",
+      "Mount namespaces, noncooperating writers, removal/power-loss/kernel-I/O races remain; no automatic whole-table rollback or guaranteed boot fallback",
+      "Firmware active-slot/LP/Virtual-A-B coherence and retained057/055/056 limitations remain"
+    ]
+  },
+  {
+    "index": 59,
+    "source": "4f7983a03673e052a7f32b97c55c38d5eed9cef4",
+    "report": "docs/upstream-sync-20261017/059-4f7983a.md",
+    "report_sha256": "60d49574295848835627810011b682796b56cbee6c21bb71645401a74dd393d4",
+    "checks": [
+      "Worker: all129 package patches apply fuzz0 across217 touched source paths; no compile proof",
+      "Worker: 74 retained/new mock tests plus Android action/storage and cleanup probes pass",
+      "Worker: shell/Python/JS syntax, diff and preservation checks pass",
+      "Coordinator: report read, source ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device evidence; standalone Baldur recipe/package remains unbuilt, full Kconfig/DTS/C/module/firmware/runtime compatibility unverified",
+      "GBL/KernelSU/AVB/active-A/ZUI assumptions not independently tested; boot/GPT writes non-atomic, backup recovery not validated",
+      "Firmware-before-probe/systemd ordering, SD/UFS/audio/display/GPU/power/thermal/watchdog uncertain; advisory locks and namespace/power-loss races remain",
+      "Prior055-058 limits retained; Elden SD installer still incomplete"
+    ]
+  },
+  {
+    "index": 60,
+    "source": "9c0dcc1046e43c79287004ae5de09999a9827ed8",
+    "report": "docs/upstream-sync-20261017/060-9c0dcc1.md",
+    "report_sha256": "d62df3498a2ebb12a2e05bd34f073fb4e89199287d45b5ebcb90c92e516c7c40",
+    "checks": [
+      "Worker: five source regressions reproduced; seven cache, twenty-nine fallback and sixteen label/inventory tests pass",
+      "Worker: AST/byte preservation and whitespace pass; product delta limited to updater cache helper/stage call/inventory filter",
+      "Coordinator: report read, source ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device/recovery evidence; cache regeneration, real Linux/signatures/payload/runtime unverified",
+      "Exception assumes cached pyc regenerable; unsupported names/layouts conservatively require full data or fail",
+      "Existing general planner/type/symlink/race and size-mtime shortcuts remain; staged old recovery does not gain fixes; official managed assets can replace fork changes"
+    ]
+  },
+  {
+    "index": 61,
+    "source": "8336cda190e245ae7e1dde0ecd3c213ee97c9d90",
+    "report": "docs/upstream-sync-20261017/061-8336cda.md",
+    "report_sha256": "6de61b9d63fa8f94aed89c3f8670a3866bf817b6737db7ef886b64d5126af938",
+    "checks": [
+      "Worker: both parent diffs/tree identities/merge bases and exact product-tree equality verified",
+      "Worker: existing seven transient, twenty-nine fallback and sixteen label/inventory tests pass; no new tests/product edits",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device/runtime recovery evidence;060/048/052/053 cache regeneration, planner races, real packages and already-staged recovery limits unchanged"
+    ]
+  },
+  {
+    "index": 62,
+    "source": "0ed40ff7203c2646d7015af0cef3594680e740be",
+    "report": "docs/upstream-sync-20261017/062-0ed40ff.md",
+    "report_sha256": "50e4e39a7ef511afd372dfa920e5c001660551f7e795e1d0852fd6b24b260503",
+    "checks": [
+      "Worker: seventeen opt-in tests including three original source defects and twelve selected EVO SessionPolicies mocks pass",
+      "Worker: syntax/AST/whitespace and exact four-product-path scope/preservation checks pass",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/client/box64/Remote Play/device validation; decoding/performance/ABI/library closure/restart/cleanup unverified",
+      "Atomic per-file only; setup lock does not coordinate client updater, parent-directory links/concurrent edits/power loss remain",
+      "Exact shipped config lines lack ownership markers; identical custom values migrate, other custom inhibition may defeat opt-in; sideload args authoritative",
+      "Common sysctl ceiling not present via separate SM8750 install path; effective runtime setting unverified"
+    ]
+  },
+  {
+    "index": 63,
+    "source": "c9659fb3ee6e0cbea7b63391aa7327666c7d82e7",
+    "report": "docs/upstream-sync-20261017/063-c9659fb.md",
+    "report_sha256": "05a92f8119b6a07837d34f70ad36d626deee93295fd8cb5f0aad9a9e88670fe0",
+    "checks": [
+      "Worker: source/second-parent trees and first-parent diffs equal; no remerge resolution; merged index tree equals starting tree",
+      "Worker: report-only scope and whitespace verified; no mock reruns for unchanged product",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device evidence; all062 codec/ABI/update concurrency and existing updater/device limitations remain"
+    ]
+  },
+  {
+    "index": 64,
+    "source": "e4000c281460bfde30efa862ca221c387d09b885",
+    "report": "docs/upstream-sync-20261017/064-e4000c2.md",
+    "report_sha256": "43b3c8c7f2d33920b9704995ad49d3d1494dc449493d432a5078dd77e5b78e59",
+    "checks": [
+      "Worker: full targeted AW99706 file chain applies fuzz0; twenty-four boundary/table/field arithmetic probes pass",
+      "Worker: source property lookup reproduces20mA-to7mA/register30-to4; exact scope/preservation/patch-aware whitespace pass",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/device evidence; hotspot/temperature/current/brightness/I2C/suspend behavior unverified",
+      "Missing or invalid LED property still defaults20mA, not fail-closed7mA cap; existing lifecycle/rail rollback limitations unchanged",
+      "Full kernel/config/DTS/C validation deferred; compiled artifacts stale"
+    ]
+  },
+  {
+    "index": 65,
+    "source": "a23688573ab94bd4103b5d86adb42dc4e46bd49a",
+    "report": "docs/upstream-sync-20261017/065-a236885.md",
+    "report_sha256": "f67f529216c507ff88c0821227c54fab96614d82ae5e900fe9b922ed83dd7303",
+    "checks": [
+      "Worker: three complete targeted Goodix recipe chains apply fuzz0; twenty-four arithmetic probes pass",
+      "Worker: property/axis/scaling error cases and scope/patch-aware whitespace verified",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No compile/device proof; physical GT911 config/ranges/IRQ/multitouch/rotation/pen/sleep unverified",
+      "Inherited oversized-config heuristic and plausible wrong nonzero native dimensions can still mis-scale; unknown native dimensions not inferred",
+      "Full kernel/config integration deferred; compiled artifacts remain stale"
+    ]
+  },
+  {
+    "index": 66,
+    "source": "993f206f48b8447689f79b230f1e7a074d9255d3",
+    "report": "docs/upstream-sync-20261017/066-993f206.md",
+    "report_sha256": "f0f1601cd9d2e8a25b60fe16fe002a0a3df437f6056c1331097c4bccd6e5cf50",
+    "checks": [
+      "Worker: thirteen cache/settings/producer, thirty-two fallback/staging and sixteen release/rollback tests pass",
+      "Worker: three original-source settings type/hash failures reproduced; AST/byte preservation/syntax/whitespace pass",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/package/signature/runtime/recovery evidence; pure producer predicate only tested",
+      "Settings preserved only existing regular exact paths with missing blob, not full/supplied payload or absent-target deletion; YAML/mapping functionality unverified",
+      "Prior060/048/052 race/type/regeneration/metadata/recovery limits remain; forced cache payload increases unmeasured package size"
+    ]
+  },
+  {
+    "index": 67,
+    "source": "fe41d4130eb45ae06bdd3cfad4ce338d4118d04c",
+    "report": "docs/upstream-sync-20261017/067-fe41d41.md",
+    "report_sha256": "43d1f23c364453733905a5ae42033dc4048a387cb4f706e6b29aecb067fae920",
+    "checks": [
+      "Worker: eleven sleep-stat temp-file tests and four Discover removal probes pass; original notifier gap reproduced",
+      "Worker: shell/AST/diff/scope checks pass; all existing files except two staging scripts unchanged",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/runtime/device proof; effective CPU affinity/cgroup/thermals, Discover layout, Python/systemd/stats formats unverified",
+      "Hook interval not sleep residency; raw ticks no assumed frequency; reset/wrap and kernel-blocking reads/parallel snapshot limits remain",
+      "Discover excludes PackageKit not all other backend types; common sysctl missing from separateSM8750 path unchanged; old repack/Gen5 base not retrofitted",
+      "All062/066 runtime/update limitations retained"
+    ]
+  },
+  {
+    "index": 68,
+    "source": "45671e1f3df3d1ca3fdfba746f25f2ac94140da2",
+    "report": "docs/upstream-sync-20261017/068-45671e1.md",
+    "report_sha256": "17ec471c1b41e6db870bcccaf83aabc589a5b4e16b2117500ae615dc75b0f611",
+    "checks": [
+      "Worker: twenty-three generated-script mock tests pass; twelve SoC/action combinations and dash/bash syntax round-trip pass",
+      "Worker: exact changed-path scope/AST/whitespace pass; release pins/consumers/backup-restore bodies and other products unchanged",
+      "Coordinator: report read, ancestry, clean main/no MERGE_HEAD, HEAD=origin/main=ls-remote and next singleton dependency verified"
+    ],
+    "remaining_issues": [
+      "No build/flash/device evidence; Android root-tool line limits/toybox/SELinux/card/boot/secure acceptance unverified",
+      "Backups not device-bound; existing SoC gates not exact board compatibility; no concurrency or noncooperating-writer protection",
+      "Two-slot writes/backups non-atomic, power-loss/removal/I-O risks remain; multiple/legacy/partial copies conservatively fail"
+    ]
+  },
+  {
+    "index": 69,
+    "source": "b19966cf11ce4b6d38eedd99bb90b33870207c43",
+    "report": "docs/upstream-sync-20261017/069-b19966c.md",
+    "report_sha256": "80177e999116339b5639f100274a9bd87671d2a7f2b2a1e0972190000f5023ef",
+    "checks": [
+      "Worker: 30 lightweight tests passed (11 subid, 6 persistence, 6 focus, 7 overlay); syntax/AST/diff checks passed",
+      "Coordinator: reviewed report, source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "No build or device tests; real namespaces, systemd ordering, NSS/provider coverage, ACL/SELinux/xattrs and conditional shadow-lock cooperation unverified",
+      "Missing, multiple or colliding allocations fail conservatively; existing namespaces need migration/reboot; two-file replacement is not one transaction"
+    ]
+  },
+  {
+    "index": 70,
+    "source": "c206bb2cb8da1b8dbee4e26810176de6f09cfe0c",
+    "report": "docs/upstream-sync-20261017/070-c206bb2.md",
+    "report_sha256": "c0a049b84a1cd203cfc1d8652e2feb44a80e40ffa32edbe1d504f11ea1eb45e4",
+    "checks": [
+      "Worker: 92 local fixture/mock tests passed (17 new, 16 tablet, 19 SD, 16 Gen5, 13 EVO session, 11 sleep-stats); syntax/AST/diff/scope checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/compile/device validation; DP 4K60, audio headroom/protection, iwd availability, firmware authentication/loading and actual systemd/charger ordering remain unverified",
+      "Shared learned brightness retains first-value/full-brightness behavior, persistent stray-high peak, per-user rather than panel state and non-atomic peak write; later correction not preintegrated",
+      "Firmware resource cap can refuse legitimate oversized images; squash is structural validation not authentication or transactional bundle update; existing LP/Virtual-A-B limitations remain",
+      "Backlight saves only on normal service stop; charger cannot guarantee physical poweroff or handle power loss; boot-watch requires multi-user and can miss hung compositor"
+    ]
+  },
+  {
+    "index": 71,
+    "source": "e112c6a5e4e87898f8ba1f8ce0d46b4e08b4b258",
+    "report": "docs/upstream-sync-20261017/071-e112c6a.md",
+    "report_sha256": "1537df3a582fb740fbd2c1fb1ab13537d01c33947f03d91eda3267d24eeb8484",
+    "checks": [
+      "Worker: 112 local fixture/mock tests passed (20 new + 92 regression); 131 patches replayed fuzz0; shell/Python/YAML and scope/patch-aware whitespace checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/compile/device validation; ath12k scan timing/event/recovery, USB physical topology/races, audio filter/ALSA behavior and controller matching remain unverified",
+      "Thermal bypass and louder amplifier gain deliberately withheld; current-host/storage guard can conservatively refuse USB transitions and cannot serialize kernel UCSI",
+      "SKIP_KERNEL and CHECKS_ONLY refused before output allocation; safe reuse/check-only workflow not implemented; fresh image packaging unexecuted",
+      "Prior storage/firmware/Virtual-A-B/systemd/brightness risks remain; no later corrections preintegrated"
+    ]
+  },
+  {
+    "index": 72,
+    "source": "9e71159a18b4630cb2dbd9bef47b0949ad329436",
+    "report": "docs/upstream-sync-20261017/072-9e71159.md",
+    "report_sha256": "b4edd276a2c75225c72662b15e6fb7584ac922682ed495e118877cdae7611c69",
+    "checks": [
+      "Worker: 63 local tests passed (15 transient, 32 fallback, 16 release identity); two new cases fail as expected against pre-072 selector; AST/diff/scope checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build or actual delta/archive/signature/update/device validation; old updater, Linux overlay/xattrs/recovery and InputPlumber restart behavior unverified",
+      "Supplied map payload restores release YAML; daemon is expected to reapply saved choices at startup, arbitrary manual edits are not preserved",
+      "Prior updater planner/type/race/cache/space/power-loss limits remain; installed/staged updater does not receive fixes automatically"
+    ]
+  },
+  {
+    "index": 73,
+    "source": "0a20e5ee4546bad861f4ba129239aef7bbe3c0ac",
+    "report": "docs/upstream-sync-20261017/073-0a20e5e.md",
+    "report_sha256": "fd502c2de90936fdfcf13a53c766fa0989eb723371aa670375ad866c6538784c",
+    "checks": [
+      "Worker: 17 launcher tests, three environment probes, four isolated two-file patch applications fuzz0, shell/AST and scope/patch-aware whitespace checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No compile/build/decoder/device evidence; isolated patches are not full ordered ROCKNIX/backport stack validation, especially legacy 7.1 applicability",
+      "Elden module_blacklist=qcom_iris unchanged; source patch does not enable hardware decoding or update prebuilt/existing images",
+      "Global reset variable actual Steam semantics, firmware/ABI, restart/drain, AV1 tier cache distinction and decoded frame output unverified; prior wrapper concurrency limits remain"
+    ]
+  },
+  {
+    "index": 74,
+    "source": "a0a7ec3550c9f8585aa39c343fec95224ad4083d",
+    "report": "docs/upstream-sync-20261017/074-a0a7ec3.md",
+    "report_sha256": "1afadce1a03a9c36cc186988ef707f8b31a8254f69e487aea1262d6458168921",
+    "checks": [
+      "Worker: exact ROCKNIX tree and all 70 recipe patch blob identities checked; seven ath12k-touching patches replayed original/corrected fuzz0; manual control-flow, scope and patch-aware whitespace checks passed; no executable kernel tests claimed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/compile/device scan proof; complete kernel stack/config/API and actual 5GHz/DFS/6GHz behavior remain unverified",
+      "Firmware ranges, selected-vif association, TX drain/home-channel timing, management traffic, crash/cancel races and delayed duplicate events need runtime validation; reused scan IDs lack new per-batch generation",
+      "Text replay covers ath12k subset only; timer is scheduled wiphy work not hard wall-clock guarantee; Elden does not inherit range batching"
+    ]
+  },
+  {
+    "index": 75,
+    "source": "4aa6b18cbfd5512b4f589e344c331889c6eaa5de",
+    "report": "docs/upstream-sync-20261017/075-4aa6b18.md",
+    "report_sha256": "849e0c8b1ae53c504f916973b266c5a992574d1b6de449d54eee207df0a57f3c",
+    "checks": [
+      "Worker: 28 pinned patch blob identities checked; six relevant patch sections replayed fuzz0; targeted OPP merge/count/order/storage and thermal collision text checks passed; comment-stripped source equivalence/diff/scope passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "FINAL GLOBAL REPAIR REQUIRED: pinned SM8650 ayaneo-common DTS uses trip-point2 for GPU40C passive fan trips, overriding all eight base GPU115C critical trips; new fan labels lack cooling-map bindings. Existing95C passive/110C hot trips do not establish equivalent critical shutdown. Affects shared FIT/S2 policy, not introduced by075.",
+      "Inherited unguarded1000/1050MHz OPPs mean903MHz is not actual top; chip availability/stability unverified",
+      "No build/DTS/compile/device evidence; actual OPP filtering, ARC mapping/ACD firmware, voltage/power/thermal and suspend/load behavior remain unverified"
+    ]
+  },
+  {
+    "index": 76,
+    "source": "a9f54077f0e00c25d630f46c46808443e802d5fd",
+    "report": "docs/upstream-sync-20261017/076-a9f5407.md",
+    "report_sha256": "baf9f2bcb3b61d5a7d34ef1714c64be931528089b44aa609687bd8d3348b79f5",
+    "checks": [
+      "Worker: pinned recipe patch/DTS identities checked; targeted haptics/rsinput chains replayed for SM8550 7.1/7.2 and EVO, new0061 fuzz0 all three; both pins DTS inheritance, manual control-flow and scope/patch-aware whitespace checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/compile/device proof; full kernel/API/config, physical resonance/amplitude/braking/stock motor provenance and suspend/disconnect unverified",
+      "FINAL GLOBAL REVIEW: haptics global provider pointer lacks lifetime acquisition; producer/removal/suspend races and undrained gain/stop work/timers; 7.1 direct bridge sleep-in-atomic risk",
+      "FINAL GLOBAL REVIEW: constant upload ignores haptics_load_constant_effect return; deeper calibration restoration may overwrite errors; singleton/multi-client arbitration not solved",
+      "Normal SM8550 7.2 existing rsinput1003 needs allowed fuzz2; EVO rebased1003 fuzz0 passes. Prior075 FIT/S2 critical thermal trip collisions remain open"
+    ]
+  },
+  {
+    "index": 77,
+    "source": "a4c35af107d117df44fdaa8516b9371d06bfc2e6",
+    "report": "docs/upstream-sync-20261017/077-a4c35af.md",
+    "report_sha256": "bbca5074004d9b2d2d7a4ab31d3d185040bddd1c821f95efd128e3f64abec368",
+    "checks": [
+      "Worker: 19 selected pinned audio/DP patch applications, binary topology structure/PCM/route/token comparisons, shell syntax and diff/scope checks passed; no audio runtime claimed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/DSP/device audio proof; source-to-binary topology reproducibility and actual ALSA/UCM/PipeWire loading remain unverified",
+      "DP backend can defer/fail whole card when codec unavailable; UCM mixer isolation does not guarantee complete fault isolation; jack/default/hotplug/display-off/suspend behavior untested",
+      "No multichannel/MST/passthrough support proven; known later correction not preintegrated; prior thermal/haptics issues remain final review scope"
+    ]
+  },
+  {
+    "index": 78,
+    "source": "d21ef2db5f1d647d9abbb20db5853d3b9a3f5778",
+    "report": "docs/upstream-sync-20261017/078-d21ef2d.md",
+    "report_sha256": "32454b6e5a70bba471e17af0ca0f9e77331bbbe852edc13d0ff471d4b4ae4898",
+    "checks": [
+      "Worker: pinned recipe/DTS and113 patch modifier scan, driver arithmetic, exact commands/source prefix/scope and diff checks passed; lexical UCM review only",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "FINAL GLOBAL REVIEW: Elite PCM0 graph has no established speaker limiter/protection; SM8650 x42 rule does not match Elite, Elden limiter also not proof. Raw360 removes22.5dB attenuation; no ACF/thermal/excursion/impedance/feedback protection evidence",
+      "Sequential csets lack rollback; AW register write errors do not propagate, start errors log only, profile/restore/concurrency may overwrite volume; successful cset not hardware readback",
+      "No build/ALSA-runtime/audio/device validation; current integration is not certification of sustained full-scale playback; prior075/076 thermal/haptics issues remain"
+    ]
+  },
+  {
+    "index": 79,
+    "source": "e312f97ba8d0a7e2b4dcfe16332987d901d058db",
+    "report": "docs/upstream-sync-20261017/079-e312f97.md",
+    "report_sha256": "60a1b98cbf68331db9a9252fc5bae4f192889635b017879d1a6c99fa06d2a023",
+    "checks": [
+      "Worker: 24 temporary-file/mock policy/config tests passed; shell syntax, Python AST, diff/scope/preservation checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/device proof; RTC0 wake routing, gauge freshness, actual UPower/Python/config precedence and physical shutdown/recovery ordering unverified",
+      "EVO s2idle reaches hook but fake standby bypasses; hibernate/hybrid excluded; no automatic re-suspend, awake device may consume more power",
+      "Foreign RTC alarm preserved even if later than desired; compare-clear race/arm-before-journal crash remain, missing/multiple/uncertain readings skip action;3percent/hour floor not proven maximum drain",
+      "Prior075/076/078 thermal/haptics/Elite audio findings remain final global review scope"
+    ]
+  },
+  {
+    "index": 80,
+    "source": "34492506797a452e056febb587a67e88e5f91651",
+    "report": "docs/upstream-sync-20261017/080-3449250.md",
+    "report_sha256": "9f47a3e063dbf604f4fce5f8ee0faa34c0a84259c6ad28aad7db6430c2558e20",
+    "checks": [
+      "Worker:41 Python tests (6backend,19tabletSD,16Gen5) and12 actual-shipped-JS VM scenarios passed; AST/node syntax/diff/scope checks passed; no bundle build required by handwritten dist",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/device/reboot proof; allowlist identifies kernel board not installed ABL/Android presence or bootloader reason/menu support",
+      "Systemctl acceptance is not reboot success; timeout may follow submitted job; no serialization against other power actions",
+      "Tablet helper storage changes can persist when reboot fails; existing power-loss/advisory-lock/AVB/backup limitations remain; prior075/076/078 global findings retained"
+    ]
+  },
+  {
+    "index": 81,
+    "source": "9417de2013ac5518764c063b87aaaace7378b09d",
+    "report": "docs/upstream-sync-20261017/081-9417de2.md",
+    "report_sha256": "31ee31aa090a13a1e66454de4a96693f1ddea7a65855cba511945fbc9b4e9959",
+    "checks": [
+      "Worker:25 tests passed (13 UFS retry mocks +12 progress); AST/shell syntax/diff/scope/guard-order/policy assertions passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "Retry reformats three Linux filesystems including games/saves/backups, not idempotent data recovery; names cannot distinguish healthy/unfinished install; no transaction/power-loss rollback",
+      "Passwordless install intentionally not delivered: privileged fresh/metadata/tablet paths remain broad and retain admin auth; stock no-password user must configure auth",
+      "Snapshot guards/advisory lock cannot exclude external tools/automount/other namespaces/hotplug races; partial GPT layouts refused",
+      "No build/device/install proof; real UFS/LUN/polkit/parent ownership/copy integrity/ABL/boot unverified; prior075/076/078 global findings remain"
+    ]
+  },
+  {
+    "index": 82,
+    "source": "4986b92165ef20095883f0286b72ad27cb3bf6d3",
+    "report": "docs/upstream-sync-20261017/082-4986b92.md",
+    "report_sha256": "8ce4b63e07431ca2f78f899eb131153e0b9eb22463f8d590e2415ebb2c83a368",
+    "checks": [
+      "Worker: Python AST equivalence excluding module docstrings, remaining-byte equivalence, diff/scope/merge-parent checks passed; no ceremonial docs tests",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/release/runtime/device evidence;1.4 is intended upstream target, not published/deployed confirmation",
+      "Existing overlay default1.3.0 and explicit package versions unchanged; contextual versioning doc references absent versions.env",
+      "Prior081 destructive retry/auth boundaries and075/076/078 final review findings remain"
+    ]
+  },
+  {
+    "index": 83,
+    "source": "59768208ed2781209ff730af65e24de5e66a0843",
+    "report": "docs/upstream-sync-20261017/083-5976820.md",
+    "report_sha256": "8a3eff162693c49521c00de99d280fe5651ac44d122efe6a85f07046c0971824",
+    "checks": [
+      "Worker: 23 light tests passed (10 stick sleep, 7 EVO protocol, 6 selected session policy); shell/AST/diff/repack dependency checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/device proof; real MCU/UART/sysfs blocking/PM/regulator/systemd cleanup and Python packaging unverified",
+      "External writers do not share lock; hotplug name reuse and unbounded kernel I/O remain; read failures can leave LEDs lit; runtime journal not reboot durable; trigger parameters not captured",
+      "Prior075 thermal critical-trip,076 haptics lifetime/concurrency and078 Elite gain findings retained for final global review"
+    ]
+  },
+  {
+    "index": 84,
+    "source": "9804fced205a5f225cd27a344d0465f36e5ed511",
+    "report": "docs/upstream-sync-20261017/084-9804fce.md",
+    "report_sha256": "a0b6e3c270686cc123a1bd51722720c0ea6502fdd66d17c82c582b95b6120ebf",
+    "checks": [
+      "Worker:29 lightweight tests passed (5 patch regressions,14 EVO USB sleep,10 stick sleep); eight recipe targeted DWC3 fuzz-zero replays and268 pinned ROCKNIX blob checks; AST and patch-aware diff checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "TB321FU0012 now expects inherited0057; next source changing selection must independently rebase/review tablet patch context",
+      "No full stack/build/lockdep/device evidence; real charger reset, clock/PHY/wake/PM timing and full lock graph unverified; failed runtime get has no autonomous retry; wake IRQ reads flag outside new lock; inherited PHY warnings continue",
+      "Prior075 thermal critical-trip,076 haptics lifetime/concurrency and078 Elite gain findings retained for final review"
+    ]
+  },
+  {
+    "index": 85,
+    "source": "13a7f3d8dcb04b36062b29858dcd9f794a743b6c",
+    "report": "docs/upstream-sync-20261017/085-13a7f3d.md",
+    "report_sha256": "abc5e27cf73747658dd167fe10712945988c0997bb774955517a3d2ed4a88a3c",
+    "checks": [
+      "Worker:6 regressions and8 targeted recipe DWC3 fuzz-zero replays passed with084 output equivalence;268 ROCKNIX blob checks, shell/AST and patch-aware diff checks passed; pre-repair failures reproduced",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "Independent tablet sleep implementation may diverge from shared handheld fixes; review both when either changes",
+      "No full stack/build/device/lockdep evidence;084 PM/PHY/concurrency limitations retained; normal default7.2.8 replay does not certify complete legacy tablet or separate7.2.6 package",
+      "Prior075 thermal,076 haptics and078 Elite gain final-review findings remain"
+    ]
+  },
+  {
+    "index": 86,
+    "source": "5560beff5dc3c7a660603eed2cfe147b78b7b6bc",
+    "report": "docs/upstream-sync-20261017/086-5560bef.md",
+    "report_sha256": "037880928af6d0f5a93a4c921764a12ceccf7caafa2a36340686be1f416ad674",
+    "checks": [
+      "Worker:8 registry/gating fixtures passed; original source regression failures reproduced; shell/embedded-shell/AST/diff checks passed;70 pinned ROCKNIX blob checks and0052 targeted7.2.8 FastRPC three-file fuzz-zero replay passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/DT schema/device proof; SH5001 firmware/axis/rate/calibration/audio coexistence/SSR/ADSP memory lifetime unverified;12 DT sessions fits14 driver limit only source evidence",
+      "Generator can succeed despite individual write failures; two nonempty registry files not full validation; partial nonempty registry intentionally preserved for manual recovery; rename not power-loss durable",
+      "Inherited SensorsPD background supervision incomplete and motion-only bridge retains stale motion; Odin copy error suppression and FastRPC teardown concurrency remain",
+      "Prior075 thermal,076 haptics and078 gain final-review findings unchanged"
+    ]
+  },
+  {
+    "index": 87,
+    "source": "eb92b9f94e335415737f4a03b61378706805085a",
+    "report": "docs/upstream-sync-20261017/087-eb92b9f.md",
+    "report_sha256": "abdc193561af5f877e9fa4a1c1dd2b562cc33f7119d38d8560219965149b0adc",
+    "checks": [
+      "Worker:24 existing fake-RTC low-battery tests passed;60 pinned ROCKNIX blobs and both kernel RTC/PMIC/sysfs sources reviewed;diff checks and exact-source product-byte comparison passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/DT/device proof; secure PMIC/ADSP relinquishment,IRQ wake routing,rtc0 identity,offset persistence and audio/sensor coexistence unverified; alarm IRQ failure can now prevent RTC registration",
+      "079 ownership remains best effort across external writers; no wake-cause inference or auto re-suspend; prebuilt kernels unchanged",
+      "Prior075 thermal,076 haptics and078 Elite gain findings unchanged"
+    ]
+  },
+  {
+    "index": 88,
+    "source": "8b222c360eadaef59daf83efc575ed840a2a40db",
+    "report": "docs/upstream-sync-20261017/088-8b222c3.md",
+    "report_sha256": "88d90488d9bf7dd782f31af7143b44244a471609ade7ba7c912e518803f49e34",
+    "checks": [
+      "Worker:3 regressions including9 recipe two-file fuzz-zero replay matrices and EVO equivalence passed; five pre-repair assertion failures reproduced;268 ROCKNIX blobs verified; shell/AST/patch-aware diff checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No full stack/build/device proof; actual UFS optional responses,locking,resume/recovery and data integrity unverified",
+      "Legacy7.1.2 and prebuilt kernels receive no new behavior; timestamp rejection memory persists recovery but resets on full discovery/lifetime",
+      "Prior075 thermal,076 haptics and078 Elite gain findings unchanged"
+    ]
+  },
+  {
+    "index": 89,
+    "source": "367fc0a665e7584e0341aa0b5cee9ba7650d6447",
+    "report": "docs/upstream-sync-20261017/089-367fc0a.md",
+    "report_sha256": "02256a68114a426e4c26b3b1c6f43202e62330f60e7712d6f7502d6fad946f94",
+    "checks": [
+      "Worker:18 fake-I/O regressions passed; selected upstream cases reproduced12 failed assertions; Python AST and diff checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/device/live audio proof; real evdev/ioctl,hotplug,suspend and PipeWire routing unverified; separate fds not globally deduplicated;<=0.1s suspend gaps not canceled",
+      "Synchronous audio commands have2s individual timeout and submitted commands cannot be retracted; no cross-process atomic RMW/singleton; upward first-channel policy and server downward floor inherited",
+      "Prior075 thermal,076 haptics and078 Elite gain findings unchanged"
+    ]
+  },
+  {
+    "index": 90,
+    "source": "b367e5ca8de18c05d910f03a4a870249daf04b10",
+    "report": "docs/upstream-sync-20261017/090-b367e5c.md",
+    "report_sha256": "99cd597022a3a9f985fee6a789dc0e07e9abbbab57bd2d1bf3dd5b9ce61925cf",
+    "checks": [
+      "Worker:7 targeted recipe patch replays pass (EVO fuzz0,others effective recipe policy);219 ROCKNIX blobs/raw hashes verified; structural lifecycle assertions,shell/AST/JSON/patch-aware diff checks passed; original two EVO conflicts reproduced",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No compilation/full-stack/runtime/device proof; real PM lock ordering,DSI noirq supplier readiness,LPASS votes,speaker mute/recovery/unbind and key IRQ timing require final validation",
+      "DWC3 reset-on-resume also holds runtime PM reference with attached devices; reliability/power and USB storage integrity unverified",
+      "Battery firmware ACK delay/service restarts and best-effort requests,fan rollback/charging provider behavior,HTR restore failures and conservative WSA fault signature remain limits",
+      "Prior075 critical GPU trips,076 haptics lifetime/concurrency and078 Elite gain remain final-global findings"
+    ]
+  },
+  {
+    "index": 91,
+    "source": "7fdbf94a2d8545b131570ce73efe3bb2abc986ae",
+    "report": "docs/upstream-sync-20261017/091-7fdbf94.md",
+    "report_sha256": "a7ebee2ea58f87f026d743f0b4c7a76f30e84d855949d03039f4b76826e2ea7b",
+    "checks": [
+      "Worker:3 targeted panel patch chains passed fuzz0,121 ROCKNIX blobs verified;reverse/reapply and lifecycle-byte preservation/source assertions/diff checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/device proof of no white flash/frame timing/DCS acceptance; failed brightness enable can leave panel dark until successful update/cycle",
+      "Inherited backlight LPM/error and regulator rollback limitations unchanged;090 noirq supplier readiness still needs validation",
+      "Prior075 thermal,076 haptics and078 Elite gain findings unchanged"
+    ]
+  },
+  {
+    "index": 92,
+    "source": "c60d7e4497a7a2ca9c91a8b493331084f40f2f32",
+    "report": "docs/upstream-sync-20261017/092-c60d7e4.md",
+    "report_sha256": "026f700a333ba030b912744042d771da73520de405dc562b740ac75b26cb8b1b",
+    "checks": [
+      "Worker:20 YAML parsed and18 focused assertions passed;17 pinned InputPlumber blobs verified;static press/repeat/release traces anddiff checks passed. Full schema validation NOT claimed: schema enum omits runtime-supported deck-uhid",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No build/device evidence; firmware raw codes/physical labels/Steam glyphs/Nintendo mode/user profiles/hotplug unverified",
+      "Copy-based deployment can leave unused old map; stale composites/user overrides remain; pinned schema/runtime deck-uhid mismatch unchanged",
+      "Prior075 thermal,076 haptics and078 Elite gain findings unchanged"
+    ]
+  },
+  {
+    "index": 93,
+    "source": "f1058a030cd9a46359230d442db3988e0c243816",
+    "report": "docs/upstream-sync-20261017/093-f1058a0.md",
+    "report_sha256": "685f66de033449d1a031960c42117bb1d2d3854fc5d6e148a7f10453c63f0b3c",
+    "checks": [
+      "Worker:4 mock wrapper checks passed,4 exact-source harness failures explained;Bash/embedded recipe syntax,Python AST,diff/scope checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "093 intended keyboard-fit feature withheld; narrow keyboard clipping unresolved. Final review must identify verified keyboard-specific sizing mechanism and actual Steam/KWin identity before repair; no global DPI/Steam-wide scaling substitution",
+      "No build/render/device evidence;fractional scale/rotation/multi-output/workarea/hotplug remain unvalidated",
+      "Prior075 thermal,076 haptics and078 Elite gain findings unchanged"
+    ]
+  },
+  {
+    "index": 94,
+    "source": "2921ae7041fded6ece5b941a1e9ee28487e224f3",
+    "report": "docs/upstream-sync-20261017/094-2921ae7.md",
+    "report_sha256": "04ade8dea9e66afa58a26e9b93602b2a6ecc83eea10744256d8663a8e5f41c77",
+    "checks": [
+      "Worker:17 temporary mocked storage tests passed; original eMMC false positive reproduced;Python AST,Bash syntax,diff/path preservation checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "094 early coldplug remains unresolved: refuses before required mounts; no late retrigger. Existing automount/Steam formatter not vendored or certified; actual consent/target/format/game registration needs final coherent-image review",
+      "Snapshot checks cannot exclude other namespaces/external writers/later hotplug; no lock/authority token; strict checks can refuse useful cards; udev sandbox/Python/util-linux/latency unverified",
+      "Labels/geometry never prove data disposable; SD can hold only original ABL/GPT/boot backups/games/saves. No actual storage operations or build/device proof",
+      "Prior075 thermal,076 haptics,078 gain,093 keyboard-fitting findings retained"
+    ]
+  },
+  {
+    "index": 95,
+    "source": "9995ea405727e32daa3786794f70b1694b818f97",
+    "report": "docs/upstream-sync-20261017/095-9995ea4.md",
+    "report_sha256": "909f0a3fe6084d4482ac6a06c9f52c6b3ed43e948d36dff0c121d97c7ac2f46e",
+    "checks": [
+      "Worker:96 numerical contrast cases passed >=4.5:1 for tested opaque built-in fills; temporary real backend-function config/skin harness passed;Node syntax,Python AST,Ui member/scope/diff checks passed. Full QML parsing/type/binding checks NOT claimed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "No Qt rendering/build/device proof; live bindings,HTTP/restart persistence,animation/physical readability/packaging unverified",
+      "Translucent custom palettes,dim/artwork contrast and global-palette thumbnails not certified; intentional semantic colours/blanking/game surfaces unchanged",
+      "Prior075 thermal,076 haptics,078 gain,093 keyboard fitting,094 coldplug/formatter findings retained"
+    ]
+  },
+  {
+    "index": 96,
+    "source": "a7e1821ecda220f284b414f5902bffcb9aa0fe06",
+    "report": "docs/upstream-sync-20261017/096-a7e1821.md",
+    "report_sha256": "87f5a367001c2695f27e2210724bafdd5d52544e8ac569b547f1126be650de3d",
+    "checks": [
+      "Worker:21 YAML files and21 assertions passed;17 pinned InputPlumber blobs verified; exact source/revert and scope comparisons, diff checks passed",
+      "Coordinator: full report read; source ancestry, clean main, no MERGE_HEAD, HEAD=origin/main=ls-remote and next-source singleton verified"
+    ],
+    "remaining_issues": [
+      "Physical button positions/labels/Nintendo mode/glyphs and DMG wheel events unverified; inherited deck-uhid schema omission has runtime factory support, not full schema validation",
+      "No build/device proof; firmware modes/user overrides/coherent staging remain unverified; prior075/076/078/093/094 final-review findings retained"
+    ]
+  },
+  {
+    "index": 97,
+    "source": "4bd20f1ef73703b394e5d8092023aee5f6070516",
+    "report": "docs/upstream-sync-20261017/097-4bd20f1.md",
+    "report_sha256": "48535bf1f13c8e0854e2018dbc28d1e372d29adcf9721699796a51b903470c64",
+    "checks": [
+      "Worker:27 mocked volume tests,22 YAML files/22 assertions,Python AST and diff checks passed;17 pinned InputPlumber blobs verified",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "Actual face/glyph/firmware mapping,ACE input1 assumption,DMG wheel identity/direction/resolution and installed/user consumers unverified; deck-uhid schema enum omission remains",
+      "Wheel uses one step per nonzero packet,ignores high-resolution companion; no exclusive grab,queued synchronous audio/duplicate session risks remain; no build/device proof",
+      "Prior075 thermal,076 haptics,078 gain,093 keyboard fitting,094 coldplug/formatter findings retained"
+    ]
+  },
+  {
+    "index": 98,
+    "source": "6d2e85c88921f1855108e15c23cfca3650fc487f",
+    "report": "docs/upstream-sync-20261017/098-6d2e85c.md",
+    "report_sha256": "42d1e16368ee28accd7226a785fe8433b55340930589228b63edd1c04ca2a1d6",
+    "checks": [
+      "Worker:7 isolated audio tests,19 source-model coordinate probes,27 volume regressions,Goodix patch fuzz0,Bash/Python syntax and patch-aware whitespace checks passed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "098 final-review requirement: S2 hardware mixer policy incomplete because api.alsa.soft-mixer=true; need S2-only coherent policy preserving FIT/headphones and installed ALSA/WirePlumber validation",
+      "UCM reference BootSequence raw84 exceeds inspected machine max81; actual initialization/control enumeration,persistence/resume and gain path require validation. PA17/digital81/limiter presence are not speaker safety evidence",
+      "Touch physical ranges/corners/rotation/multitouch/resume unverified; legacy7.1 skips patch. No build/device proof",
+      "Prior075 thermal,076 haptics,078 gain,093 keyboard fitting,094 coldplug/formatter findings retained"
+    ]
+  },
+  {
+    "index": 99,
+    "source": "c3b278751bfbef1e53f56dae1f8e1c36a0e72a9c",
+    "report": "docs/upstream-sync-20261017/099-c3b2787.md",
+    "report_sha256": "ab635d60a86e4c2dfbdfd041eb0da61b35d4e7c02b82fc0cbfb3b774a419fab3",
+    "checks": [
+      "Worker:12 actual extracted-JS trackpad tests,10 mocked RemoteInput assertions,96 contrast cases,8 DashPage tests,Node/Python syntax and diff checks passed; no complete QML parser/runtime proof",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "099 final transport/lifecycle review: asynchronous HTTP request ordering can deliver late down after release-all; backend lock is not event ordering. No hold watchdog/UI-exit release; partial uinput creation descriptor cleanup and permissions unverified",
+      "Manual Left vs tap-drag ownership uncounted; Qt cancellation/same-count finger replacement/>3 touches/physical behavior unknown; Game Mode whitelist does not enforce top-only Desktop KWin targeting",
+      "No build/device proof; prior075 thermal,076 haptics,078 gain,093 keyboard fitting,094 coldplug/formatter,098 S2 mixer findings retained"
+    ]
+  },
+  {
+    "index": 100,
+    "source": "d1526c3b553e768107f7f8dbc3f075144f3175d2",
+    "report": "docs/upstream-sync-20261017/100-d1526c3.md",
+    "report_sha256": "273a655ad51d581b2d4945f1255baa9c72cc5604692689f57c8c9f35ceca3f23",
+    "checks": [
+      "Worker:13 isolated host adapter tests and16 existing Gen5 tests passed;Bash/embedded shell/Python syntax,diff and exact normalized body/scope checks passed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "No actual WSL/Windows/native ADB or device/installation proof; Windows Unicode/codepage/UNC access,release writability and actual Android APIs unverified",
+      "Serial pin is not physical authenticity; existing advisory locks/backup guards do not guarantee rollback/recovery against removal/external writers/power loss. Module install manual fallback unchanged",
+      "No build/device proof; prior075/076/078/093/094/098/099 final-review findings retained"
+    ]
+  },
+  {
+    "index": 101,
+    "source": "71fd5440cea54b662186a736694d2bc74f33380b",
+    "report": "docs/upstream-sync-20261017/101-71fd544.md",
+    "report_sha256": "6c5c715f59b899d474bce0bf1d8e153bac103078adb3bb23c66792fb682a4998",
+    "checks": [
+      "Worker:15 host/ADB tests,3 card-stage groups(26 injected failures dash/Bash) and16 runtime mocks passed;Bash/dash/AST/diff/preservation checks passed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "101 additional final-review repair: shared Android storage.sh hash still unchecked sha256sum-to-cut pipeline outside CARD; action.sh compares source/backup via helper on both sides and two empty outputs can falsely match",
+      "No real Android/toybox/KernelSU/WSL/device proof; sequential card publication not atomic; advisory locks/removal/external writers/power-loss recovery unproven",
+      "No build/device proof; prior075/076/078/093/094/098/099 final-review findings retained"
+    ]
+  },
+  {
+    "index": 102,
+    "source": "cbef1f1746c9085bf3c87e4e4ea2e67e97b03d4e",
+    "report": "docs/upstream-sync-20261017/102-cbef1f1.md",
+    "report_sha256": "80a0cefc59cc05198b97773ce9f11733f69543f605a88cfa7fa211d493f0db5a",
+    "checks": [
+      "Worker:9 new shortcut fixtures+6 persistence+6 focus+7 Lepton tests passed;Bash/AST/diff and product scope checks passed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "PNG signature only,not full image decode safety; existing shortcuts not migrated; external steamos-add-to-steam persistence/client behavior unverified;desktop/marker writes and concurrent sync remain limited",
+      "102 global-review findings: NO_Steam VDF parser accepts truncation/duplicate keys and loses uint64 type; direct writers lack atomicity/Steam lock. Emulator Hub writer lacks backup/atomicity and marks state before publication; dashboard recents parser lacks shape/numeric validation",
+      "No live Steam/Android/build/device proof; prior075/076/078/093/094/098/099/101 final-review findings retained"
+    ]
+  },
+  {
+    "index": 103,
+    "source": "924a80f2f0730ea5904b1d2bfe0f7028aff75a91",
+    "report": "docs/upstream-sync-20261017/103-924a80f.md",
+    "report_sha256": "3b90d51a39a7f32ed79ac5e548c5ba98044358e95e95002b64857dfd081c34f3",
+    "checks": [
+      "Worker:20 float32 arithmetic/source assertions passed,diff checks and product isolation verified; no C++ execution/compile claimed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "103/070 brightness only partially fixed: first high sample/gradual outliers still poison top;low initial top rejects legitimate jumps; no decreasing/reset or connector/HDR/panel-keyed state. Shared direct-truncate persistence races and accepts numeric prefix",
+      "Finite outlier still affects raw color-management request despite not becoming learned top; enormous initial/loaded top and malformed min convar remain limited; source/modeled checks not runtime/physical calibration",
+      "No build/device proof; prior075/076/078/093/094/098/099/101/102 final-review findings retained"
+    ]
+  },
+  {
+    "index": 104,
+    "source": "aac085b9e70055cc9ae8976152930df805162f28",
+    "report": "docs/upstream-sync-20261017/104-aac085b.md",
+    "report_sha256": "be550ad026d7950a546f0eadb6e08a0ce733dce58d3eaafdd3a544ce792c7571",
+    "checks": [
+      "Worker:131 pinned patch text applications fuzz0,5 exact-node query mocks,19 host ADB tests,3 Action groups,3 CARD groups,16 runtime tests,syntax/AST/diff/preservation checks passed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "100MHz does not force SDR50;SDR104 can remain and SDR50 tuning exception exists. Actual clock/timing/card stability and DT compilation unverified",
+      "Separate reboot success is not boot proof;exit2 requires observation,no automatic retry. Preparation transport loss still fails closed; advisory-lock release to reboot gap and power-loss recovery remain",
+      "No build/device proof;101 shared hash weakness and prior075/076/078/093/094/098/099/102/103 findings retained"
+    ]
+  },
+  {
+    "index": 105,
+    "source": "ea5568a3b0b0ccb4614c040fdfd50b2df5e28029",
+    "report": "docs/upstream-sync-20261017/105-ea5568a.md",
+    "report_sha256": "6057a2f8065d1bab4b6470411a8b28545ae54e2579e4c7e8dd771880d7bbc93b",
+    "checks": [
+      "Worker:full history/binary diff equivalence/remerge inspection,updater AST and exact index/working tree equality to premerge passed;no ceremonial tests",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote,next singleton and report-only committed delta verified"
+    ],
+    "remaining_issues": [
+      "No new product behavior;066 updater/settings type/race/inventory/recovery limits and063/067 PyroWave ABI/sysctl/SM8750 staging gap remain",
+      "No build/runtime/device proof; prior075/076/078/093/094/098/099/101/102/103 findings and104 timing/reboot uncertainty retained"
+    ]
+  },
+  {
+    "index": 106,
+    "source": "6ce5f73b802043953d6a78fd879efc32c1f20017",
+    "report": "docs/upstream-sync-20261017/106-6ce5f73.md",
+    "report_sha256": "87a1e53315bc4ab2aad63e4e2e8c26297d975bff473a3c5881161c0aa2737ca7",
+    "checks": [
+      "Worker:source/parent exact header-only deletion and byte-identical patch suffixes verified;fork suffix equality,17 hunk counts,scope and whitespace passed",
+      "Coordinator: full report read; exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote and next singleton verified"
+    ],
+    "remaining_issues": [
+      "Header edit changes whole-patch cache digest despite identical kernel payload; no binary/runtime effect established",
+      "090 PM/teardown/mute/recovery hardware risks and098 S2 mixer unchanged; no build/device proof; prior global findings retained"
+    ]
+  },
+  {
+    "index": 107,
+    "source": "56a30d715a1a7078aa8aab5a9d6fc9382b305b46",
+    "report": "docs/upstream-sync-20261017/107-56a30d7.md",
+    "report_sha256": "089236a7aae9466f780976c33f13c10b3e8dbf94ca384940844c37076277eb75",
+    "checks": [
+      "Worker:19 local documentation links resolve; source-based command/default/feature review and whitespace checks passed",
+      "Coordinator:full report read;exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote,next singleton and docs-only delta verified"
+    ],
+    "remaining_issues": [
+      "README claims are source-based,not build/device proof;updater uses upstream feed,not dedicated EVO fork feed",
+      "Prior global review findings retained; USB-C monitor audio remains unverified pending108 review"
+    ]
+  },
+  {
+    "index": 108,
+    "source": "66e1d48ee22be3036a60cf437647e4a479f99606",
+    "report": "docs/upstream-sync-20261017/108-66e1d48.md",
+    "report_sha256": "bccc628016a7bde488c5f3ef2035226e6cd09a835d8ac4b332bf9603f00cd54c",
+    "checks": [
+      "Worker:UCM byte-prefix/device/PCM/lexical/symlink checks,topology byte inspection and scope/whitespace assertions passed;not ALSA parser or runtime proof",
+      "Coordinator:full report read;exact merge parents,source ancestry,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote,next singleton and five-path scope verified"
+    ],
+    "remaining_issues": [
+      "Normal UCM monitor audio unavailable on both boards; PCM3 remains reachable through direct ALSA/pro-audio/manual routes; actual whole-card recovery and retained DP provider dependency unverified",
+      "078 Elite gain360 safety remains open; no build/device proof; all prior global findings retained"
+    ]
+  },
+  {
+    "index": 109,
+    "source": "e54dac93afccf76e5fefe998399b6c1b1a23f3a1",
+    "report": "docs/upstream-sync-20261017/109-e54dac9.md",
+    "report_sha256": "72462c51774e4be826837de83fe057c1c902ec09c35688676d7d4de5148af7d9",
+    "checks": [
+      "Worker:HTML/URL badge scope assertions,exact README preservation and whitespace passed",
+      "Coordinator:full report read;exact merge parents,all109 sources ancestor and reports present,clean main,no MERGE_HEAD,HEAD=origin/main=ls-remote verified"
+    ],
+    "remaining_issues": [
+      "External mutable badge does not prove unique users,successful images or devices; all prior findings require final global review/build"
+    ]
+  }
+]

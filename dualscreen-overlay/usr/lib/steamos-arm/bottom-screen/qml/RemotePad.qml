@@ -74,7 +74,7 @@ Item {
             property real vy: 0
 
             function letGo() {
-                if (holding) Ui.send("/remote/click", { button: "left", state: "up" })
+                if (holding) Ui.send("/remote/click", { button: "left", state: "up", owner: "drag" })
                 holding = false
                 fromTap = false
                 most = 0
@@ -210,7 +210,7 @@ Item {
                         surface.travelled = true
                         if (surface.fromTap && surface.most === 1 && !surface.inStrip && !surface.holding) {
                             surface.holding = true
-                            Ui.send("/remote/click", { button: "left", state: "down" })
+                            Ui.send("/remote/click", { button: "left", state: "down", owner: "drag" })
                         }
                     }
                     if (!surface.travelled)
@@ -263,7 +263,7 @@ Item {
                     }
                     var quick = Date.now() - surface.t0 < 300
                     if (surface.holding) {
-                        Ui.send("/remote/click", { button: "left", state: "up" })
+                        Ui.send("/remote/click", { button: "left", state: "up", owner: "drag" })
                         surface.holding = false
                     } else if (!surface.travelled && quick && !surface.inStrip) {
                         if (surface.most >= 3)

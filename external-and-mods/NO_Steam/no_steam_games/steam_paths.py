@@ -94,34 +94,5 @@ def localconfig_path() -> Path | None:
 
 
 def set_compat_tool(app_id: int, tool_name: str) -> bool:
-    """Set Proton compat tool for a non-Steam appid in localconfig.vdf."""
-    path = localconfig_path()
-    if not path or not tool_name:
-        return False
-
-    if path.is_file():
-        data = path.read_bytes()
-        try:
-            tree, _ = parse_binary_vdf(data)
-        except ValueError:
-            return False
-    else:
-        tree = {}
-
-    software = tree.setdefault("Software", {})
-    valve = software.setdefault("Valve", {})
-    steam = valve.setdefault("Steam", {})
-    mapping = steam.setdefault("CompatToolMapping", {})
-    mapping[str(app_id)] = {
-        "name": tool_name,
-        "config": "",
-        "priority": "250",
-    }
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    backup = path.with_suffix(".vdf.bak")
-    if path.is_file():
-        backup.write_bytes(path.read_bytes())
-    path.write_bytes(emit_binary_vdf(tree))
-    os.chmod(path, 0o644)
-    return True
+    """Select compatibility tools in Steam; never rewrite text localconfig as binary."""
+    return False
