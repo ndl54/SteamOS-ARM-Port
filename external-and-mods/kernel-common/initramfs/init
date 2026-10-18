@@ -6,7 +6,8 @@
 # before booting (debugging display/driver bring-up).
 #
 # Root: root=PARTLABEL=<name> (internal UFS install: STORAGE, boot log on
-# ROCKNIX); anything else is the microSD image (p1 boot, p2 root).
+# ROCKNIX), root=/dev/... (explicit device), or the default microSD image
+# (p1 boot, p2 root).
 # steamos.root= wins over root= (stock bootloaders may append their own).
 # Without a FAT boot partition (REDMAGIC 6) the log goes to
 # /var/log/steamos-arm-boot on the root instead.
@@ -130,6 +131,19 @@ case "$rootarg" in
       sleep 0.5
     done
     [ -n "$bootdev" ] || bootdev="$(by_partlabel "$bootlabel")"
+    ;;
+  /dev/*)
+    # A device by name: the Legion Y700 Gen 4's microSD dual boot uses
+    # root=/dev/mmcblk0, the system written to the whole card.
+    for i in $(seq 1 60); do
+      [ -b "$rootarg" ] && rootdev="$rootarg" && break
+      sleep 0.5
+    done
+    # Elden retains Android's UFS partitions. Do not mount an unrelated
+    # internal ROCKNIX/super for logs; use the SD root log fallback below.
+    if ! tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,elden'; then
+      bootdev="$(by_partlabel "$bootlabel")"
+    fi
     ;;
   *)
     for i in $(seq 1 60); do

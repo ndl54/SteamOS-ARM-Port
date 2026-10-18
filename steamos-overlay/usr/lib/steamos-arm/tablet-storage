@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Elden SD runtime checks. No installer, device discovery by name, or unmounts.
+
+The slot operation requires a previously prepared dual boot: stock ZUXOS on
+A and this system on SD, started from B. It cannot certify Android contents.
+"""
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+SYS = Path('/sys/class/block')
+STATE = Path('/var/lib/steamos-arm')
+
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def run(*args, input=None, timeout=30):
+    return subprocess.run(args, input=input, text=True, capture_output=True,
+                          check=True, timeout=timeout).stdout.strip()
+
+
+def board():
+    require(b'lenovo,elden' in Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0'),
+            'only Lenovo Elden is supported')
+
+
+def device(name):
+    require(re.fullmatch(r'[a-zA-Z0-9_-]+', name), 'invalid block name')
+    p = SYS / name
+    dev = '/dev/' + name
+    s = os.stat(dev)
+    require(stat.S_ISBLK(s.st_mode), 'not a block device: ' + dev)
+    require(p.joinpath('dev').read_text().strip() == f'{os.major(s.st_rdev)}:{os.minor(s.st_rdev)}',
+            'block device identity changed')
+    require(p.joinpath('ro').read_text().strip() == '0', 'read-only device')
+    return p
+
+
+def disk_of(p):
+    return device(p.resolve().parent.name) if (p / 'partition').exists() else p
+
+
+def children(disk):
+    return [p for p in SYS.iterdir() if (p / 'partition').exists()
+            and p.resolve().parent == disk.resolve()]
+
+
+def unused(disk, allow_root=None):
+    """Reject holders and mounts/swap on the target, except the intended SD root.
+
+    Major:minor matches also catch bind mounts and sources reported via aliases.
+    Swap files are rejected conservatively for SD growth.
+    """
+    nodes = [disk, *children(disk)]
+    ids = {p.joinpath('dev').read_text().strip() for p in nodes}
+    allowed = allow_root.joinpath('dev').read_text().strip() if allow_root else None
+    for p in nodes:
+        require(not list(p.joinpath('holders').iterdir()), 'block device has holders')
+    # Loop mappings do not necessarily appear in block holders. Check their
+    # backing block node (or filesystem for a regular backing file) too.
+    for backing in SYS.glob('loop*/loop/backing_file'):
+        name = backing.read_text().strip()
+        require(name.startswith('/'), 'unresolved loop backing path')
+        s = os.stat(name)
+        devno = s.st_rdev if stat.S_ISBLK(s.st_mode) else s.st_dev
+        require(f'{os.major(devno)}:{os.minor(devno)}' not in ids, 'target disk backs a loop device')
+    for line in Path('/proc/self/mountinfo').read_text().splitlines():
+        fields = line.split()
+        require(fields[2] not in ids or fields[2] == allowed, 'target disk is mounted')
+    swaps = Path('/proc/swaps').read_text().splitlines()[1:]
+    for line in swaps:
+        name = line.split()[0]
+        if allow_root:
+            require(False, 'disable swap before growing the root card')
+        s = os.stat(name)
+        require(not stat.S_ISBLK(s.st_mode) or f'{os.major(s.st_rdev)}:{os.minor(s.st_rdev)}' not in ids,
+                'target disk contains active swap')
+
+
+def sd_root():
+    board()
+    result = json.loads(run('findmnt', '--json', '--mountpoint', '/', '--output', 'MAJ:MIN,FSTYPE,FSROOT,OPTIONS'))
+    mounts = result['filesystems']
+    require(len(mounts) == 1, 'ambiguous root mount')
+    root = mounts[0]
+    require(root['fstype'] == 'ext4' and root['fsroot'] == '/' and 'rw' in root['options'].split(','),
+            'requires a writable direct ext4 root')
+    identity = root['maj:min']
+    require(re.fullmatch(r'\d+:\d+', identity), 'invalid root device identity')
+    p = device(Path('/sys/dev/block', identity).resolve(strict=True).name)
+    require(p.joinpath('dev').read_text().strip() == identity, 'root identity changed')
+    disk = disk_of(p)
+    require(disk.joinpath('device/type').read_text().strip() == 'SD', 'root is not an SD card')
+    require(re.fullmatch(r'[0-9a-fA-F]{32}', disk.joinpath('device/cid').read_text().strip()), 'missing SD identity')
+    return p, disk
+
+
+def table(disk):
+    t = json.loads(run('sfdisk', '--json', '/dev/' + disk.name))['partitiontable']
+    require(t['device'] == '/dev/' + disk.name and t['unit'] == 'sectors', 'unexpected table identity/units')
+    require(t.get('label') in ('gpt', 'dos') and t.get('sectorsize') in (512, 4096), 'unsupported partition table')
+    return t
+
+
+def bits(attrs):
+    out = set()
+    named = {'RequiredPartition': 0, 'NoBlockIOProtocol': 1, 'LegacyBIOSBootable': 2}
+    for word in attrs.split():
+        if word in named:
+            out.add(named[word])
+        else:
+            require(re.fullmatch(r'GUID:\d+(,\d+)*', word), 'unknown GPT attributes')
+            values = {int(n) for n in word[5:].split(',')}
+            require(all(48 <= n <= 63 for n in values), 'invalid GUID attribute bits')
+            out |= values
+    return out
+
+
+def attrs(value):
+    named = {0: 'RequiredPartition', 1: 'NoBlockIOProtocol', 2: 'LegacyBIOSBootable'}
+    words = [named[n] for n in sorted(value) if n in named]
+    high = sorted(n for n in value if n >= 48)
+    if high:
+        words.append('GUID:' + ','.join(map(str, high)))
+    return ' '.join(words)
+
+
+def slots():
+    _, sd = sd_root()
+    found = {}
+    # Enumerate all sysfs entries: by-partlabel symlinks hide duplicate labels.
+    for p in SYS.iterdir():
+        if not (p / 'partition').exists():
+            continue
+        env = dict(line.split('=', 1) for line in p.joinpath('uevent').read_text().splitlines() if '=' in line)
+        label = env.get('PARTNAME')
+        if label in ('boot_a', 'boot_b'):
+            require(label not in found, 'duplicate boot partition label')
+            found[label] = device(p.name)
+    require(set(found) == {'boot_a', 'boot_b'}, 'missing boot slots')
+    a, b = found['boot_a'], found['boot_b']
+    disk = disk_of(a)
+    require(disk.resolve() == disk_of(b).resolve() and disk.resolve() != sd.resolve(), 'invalid boot disk ancestry')
+    # UFS, not an attached USB disk with similarly named partitions.
+    require(any((p / 'driver').resolve().name == 'ufshcd-qcom' for p in disk.resolve().parents),
+            'boot partitions are not on Qualcomm UFS')
+    unused(disk)
+    t = table(disk)
+    require(t['label'] == 'gpt', 'boot disk is not GPT')
+    selected = []
+    for label, p in (('boot_a', a), ('boot_b', b)):
+        matching = [x for x in t['partitions'] if x.get('node') == '/dev/' + p.name and x.get('name') == label]
+        require(len(matching) == 1 and matching[0].get('uuid'), 'GPT/sysfs boot identity mismatch')
+        entry = matching[0]
+        require(entry['size'] > 0 and entry['start'] > 0, 'invalid boot geometry')
+        with open(entry['node'], 'rb') as f:
+            require(f.read(8) == b'ANDROID!', 'slot does not contain an Android boot image')
+        num = p.joinpath('partition').read_text().strip()
+        require(num.isdigit() and int(num) > 0, 'invalid boot partition number')
+        require(int(p.joinpath('start').read_text()) * 512 == entry['start'] * t['sectorsize']
+                and int(p.joinpath('size').read_text()) * 512 == entry['size'] * t['sectorsize'],
+                'kernel/table boot geometry differs')
+        selected.append((num, entry))
+    require(selected[0][1]['uuid'] != selected[1][1]['uuid'], 'boot UUIDs are duplicated')
+    run('sfdisk', '--verify', '/dev/' + disk.name)
+    require(selected[0][0] != selected[1][0], 'boot slots alias one partition')
+    return disk, t, selected
+
+
+def backup(disk, t, purpose):
+    STATE.mkdir(parents=True, exist_ok=True)
+    dest = Path(tempfile.mkdtemp(prefix=purpose + '-', dir=STATE))
+    dump = run('sfdisk', '--dump', '/dev/' + disk.name)
+    dest.joinpath('table.sfdisk').write_text(dump + '\n')
+    dest.joinpath('table.json').write_text(json.dumps(t, indent=2) + '\n')
+    run('sfdisk', '--backup-pt-sectors', '--backup-file', str(dest / 'gpt'), '/dev/' + disk.name)
+    require(list(dest.glob('gpt-*.bak')), 'no partition-sector backup produced')
+    os.sync()
+    print('Partition backup: ' + str(dest), flush=True)
+    return dest
+
+
+def switch_android():
+    disk, before, selected = slots()
+    old = [bits(entry.get('attrs', '')) for _, entry in selected]
+    require(50 not in old[0] and 50 in old[1], 'requires unambiguous active slot B')
+    # Do not race first-firmware extraction/reboot, which also reads slot state.
+    active = run('systemctl', 'show', '--property=ActiveState', '--value', 'steamos-arm-tablet-firmware.service')
+    require(active in ('inactive', 'failed'), 'firmware setup is still active')
+    backup(disk, before, 'slot')
+    require(slots() == (disk, before, selected), 'storage changed during validation')
+    new = [(old[0] - {50, 51, 52, 53, 55}) | {50, 51, 52, 53}, old[1] - {50}]
+    expected = json.loads(json.dumps(before))
+    for (_, entry), value in zip(selected, new):
+        for p in expected['partitions']:
+            if p['node'] == entry['node']:
+                if value:
+                    p['attrs'] = attrs(value)
+                else:
+                    p.pop('attrs', None)
+    # One sfdisk transaction updates both slot entries, preserving every other
+    # field/partition. Never temporarily select both slots with separate writes.
+    dump = run('sfdisk', '--dump', '/dev/' + disk.name)
+    lines = dump.splitlines()
+    for (_, entry), value in zip(selected, new):
+        indexes = [i for i, line in enumerate(lines) if line.startswith(entry['node'] + ' ') and ':' in line]
+        require(len(indexes) == 1, 'cannot locate boot slot in table dump')
+        i = indexes[0]
+        lines[i] = re.sub(r',\s*attrs="[^"]*"', '', lines[i])
+        if value:
+            lines[i] += ', attrs="' + attrs(value) + '"'
+    run('sfdisk', '--lock=yes', '--no-reread', '--no-tell-kernel', '--wipe=never',
+        '/dev/' + disk.name, input='\n'.join(lines) + '\n')
+    require(normalize_table(table(disk)) == normalize_table(expected),
+            'slot write did not read back; do not reboot, inspect saved backup')
+    os.sync()
+    print('ZUXOS selected on A; return to SteamOS with fastboot set_active b', flush=True)
+    # A rejected reboot leaves A selected deliberately; never claim rollback.
+    run('systemctl', '--no-block', 'reboot')
+
+
+def normalize_table(t):
+    t = json.loads(json.dumps(t))
+    for p in t['partitions']:
+        p['attrs'] = sorted(bits(p.get('attrs', '')))
+    return t
+
+
+def grow():
+    root, disk = sd_root()
+    if root == disk:
+        print('Whole-card ext4 root: no partition to grow')
+        return
+    parts = children(disk)
+    require(len(parts) == 1 and parts[0] == root, 'only a single-root-partition SD layout can grow')
+    unused(disk, root)
+    before = table(disk)
+    require(len(before['partitions']) == 1, 'unexpected partitions in table')
+    entry = before['partitions'][0]
+    require(entry['node'] == '/dev/' + root.name and entry['start'] > 0 and entry['size'] > 0,
+            'root partition identity/geometry mismatch')
+    require(entry['type'].lower() == ('83' if before['label'] == 'dos' else '0fc63daf-8483-4772-8e79-3d69d8477de4'),
+            'root is not a Linux filesystem partition')
+    num = root.joinpath('partition').read_text().strip()
+    require(int(root.joinpath('start').read_text()) * 512 == entry['start'] * before['sectorsize']
+            and int(root.joinpath('size').read_text()) * 512 == entry['size'] * before['sectorsize'],
+            'kernel/table root geometry differs')
+    require(num.isdigit() and (before['label'] != 'dos' or 1 <= int(num) <= 4), 'unsupported partition number')
+    fsuuid = run('blkid', '-s', 'UUID', '-o', 'value', '/dev/' + root.name)
+    require(re.fullmatch(r'[0-9a-fA-F-]{36}', fsuuid), 'missing ext4 identity')
+    identity = {'fsuuid': fsuuid, 'size': entry['size'],
+                'card_sectors': disk.joinpath('size').read_text().strip(), 'cid': disk.joinpath('device/cid').read_text().strip(), 'table': before.get('id'),
+                'start': entry['start'], 'uuid': entry.get('uuid')}
+    marker = STATE / 'sd-grown'
+    if marker.exists() and marker.read_text().strip() == json.dumps(identity, sort_keys=True):
+        return
+    backup(disk, before, 'sd-grow')
+    require(sd_root() == (root, disk) and table(disk) == before, 'storage changed during validation')
+    run('sfdisk', '--lock=yes', '-N', num, '--no-reread', '--no-tell-kernel', '--wipe=never',
+        '/dev/' + disk.name, input=f"{entry['start']}, +\n")
+    after = table(disk)
+    require(len(after['partitions']) == 1, 'partition count changed')
+    grown = after['partitions'][0]
+    require(grown['size'] >= entry['size'], 'partition shrank')
+    expected = json.loads(json.dumps(before))
+    expected['partitions'][0]['size'] = grown['size']
+    # sfdisk may relocate GPT's backup header to the end of a larger card.
+    if 'lastlba' in after:
+        require(after['lastlba'] >= before['lastlba'], 'GPT usable space shrank')
+        expected['lastlba'] = after['lastlba']
+    require(after == expected, 'unexpected partition metadata change; inspect backup')
+    run('partx', '--update', '--nr', num, '/dev/' + disk.name)
+    require(int(run('blockdev', '--getsize64', '/dev/' + root.name)) == grown['size'] * after['sectorsize'],
+            'kernel partition size is stale; retry after reboot')
+    run('resize2fs', '/dev/' + root.name, timeout=300)
+    # Never shrink/restore a live grown filesystem after failure. Keep backup,
+    # return failure, and retry without a completion marker on the next run.
+    identity['size'] = grown['size']
+    tmp = marker.with_suffix('.tmp')
+    tmp.write_text(json.dumps(identity, sort_keys=True) + '\n')
+    os.replace(tmp, marker)
+    os.sync()
+    print('SD root partition and ext4 growth completed')
+
+
+def main():
+    action = sys.argv[1:]
+    require(action in (['slot', 'status'], ['slot', 'check'], ['slot', 'android'], ['grow']), 'invalid tablet storage action')
+    board()
+    if action in (['slot', 'status'], ['slot', 'check']):
+        _, _, selected = slots()
+        values = [bits(entry.get('attrs', '')) for _, entry in selected]
+        require(50 not in values[0] and 50 in values[1], 'requires unambiguous active slot B')
+        if action[-1] == 'status':
+            print('Elden SD root; slot B active. Stock ZUXOS on A must have been retained during installation.')
+        return
+    require(os.geteuid() == 0, 'run as root')
+    with open('/run/lock/tablet-gpt.lock', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if action == ['grow']:
+            grow()
+        else:
+            switch_android()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as exc:
+        print(f'tablet-storage: {exc}', file=sys.stderr)
+        sys.exit(1)

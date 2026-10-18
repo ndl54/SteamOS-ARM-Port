@@ -33,6 +33,17 @@ def tablet() -> bool:
     except OSError:
         return False
     return "lenovo,tb321fu" in compat or "lenovo,elden" in compat
+
+
+def dualboot() -> bool:
+    # Share the exact board/device/slot checks with the mutating helper.
+    try:
+        return subprocess.run(["/usr/lib/steamos-arm/tablet-slot", "check"],
+                              capture_output=True, timeout=8).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 PROFILES = ("silent", "balanced", "turbo")
 ACTIONS = ("profile-next", "rgb-next", "sticks-toggle", "fan-boost", "game", "none")
 
@@ -210,6 +221,7 @@ class Plugin:
             "menu_clicks": st["menu_clicks"],
             "has_flip": tablet(),
             "flip": os.path.exists(FLIP),
+            "has_dualboot": await asyncio.to_thread(dualboot),
             "has_motors": any("HID_ID=0003:00004001:00000428" in rd(f"{d}/device/uevent")
                               for d in glob.glob("/sys/class/hidraw/hidraw*")),
             "buttons": st["buttons"],
@@ -329,6 +341,18 @@ class Plugin:
         elif os.path.exists(FLIP):
             os.remove(FLIP)
         return os.path.exists(FLIP)
+
+    async def boot_android(self, **_: Any) -> bool:
+        """Dual boot (SteamOS on the microSD card, ZUXOS on slot A): make slot A
+        active and restart into ZUXOS."""
+        if not await asyncio.to_thread(dualboot):
+            return False
+        try:
+            r = await asyncio.to_thread(subprocess.run,
+                                       ["/usr/lib/steamos-arm/tablet-slot", "android"])
+            return r.returncode == 0
+        except OSError:
+            return False
 
     async def set_power_led(self, on: bool = True, **_: Any) -> bool:
         st = load()

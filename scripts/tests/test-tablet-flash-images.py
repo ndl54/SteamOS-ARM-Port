@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise cleanup and boot configs without root, mounts, images or compilation."""
 import os
+import hashlib
+import shlex
 from pathlib import Path
 import re
 import subprocess
@@ -148,22 +150,37 @@ losetup() {
 
     def test_fast_requires_prepared_tree_and_normalizes_zero(self):
         fragment = WRAPPER[WRAPPER.index('die() {'):WRAPPER.index('mkdir -p "$W/cache"')]
-        for fast, prepared, valid in (('0', False, True), ('', False, True),
-                                      ('1', False, False), ('1', True, True), ('bad', True, False)):
-            with self.subTest(fast=fast, prepared=prepared), tempfile.TemporaryDirectory() as temp:
+        # The057 recipe uses BASH_SOURCE, a source pin and a patch digest. Run
+        # only this guard fragment from a fixture script; never the builder.
+        patch = REPO / 'external-and-mods/kernel-sm8650/patches/0055-drm-msm-dpu-real-vblank-timestamps-on-command-mode-panels.patch'
+        pin = next(line.split('=', 1)[1] for line in WRAPPER.splitlines() if line.startswith('SRC_COMMIT='))
+        recipe = pin + ':steamos-tablet-v1:' + hashlib.sha256(patch.read_bytes()).hexdigest()
+        fragment = '\n'.join('VBLANK_PATCH=' + shlex.quote(str(patch)) if line.startswith('VBLANK_PATCH=') else line
+                             for line in fragment.splitlines())
+        for fast, prepared, stamp, valid in (('0', False, '', True), ('', False, '', True),
+                ('1', False, recipe, False), ('1', True, '', False), ('1', True, 'old', False),
+                ('1', True, recipe, True), ('bad', True, recipe, False)):
+            with self.subTest(fast=fast, prepared=prepared, stamp=stamp), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 cpio = root / 'initrd.cpio'
                 cpio.write_text('fixture only')
+                (root / 'cache').mkdir()
+                marker = root / 'cache/steamos-tablet-recipe'
+                if stamp:
+                    marker.write_text(stamp)
                 if prepared:
                     config = root / 'cache/build/linux-7.2.6/.config'
                     config.parent.mkdir(parents=True)
                     config.write_text('CONFIG_ARM64=y\n')
-                result = subprocess.run(['bash', '-eu', '-c', fragment + '\nprintf "FAST=%s" "$FAST"'],
-                    env={**os.environ, 'FAST': fast, 'W': temp, 'CPIO': str(cpio)},
+                guard = root / 'guard.sh'
+                guard.write_text(fragment + '\nprintf "FAST=%s" "$FAST"')
+                result = subprocess.run(['bash', '-eu', str(guard)],
+                    env={**os.environ, 'FAST': fast, 'W': temp, 'CPIO': str(cpio), 'SRC_COMMIT': pin},
                     capture_output=True, text=True)
                 self.assertEqual(result.returncode == 0, valid, result.stderr)
                 if valid:
                     self.assertEqual(result.stdout, 'FAST=' + ('1' if fast == '1' else ''))
+                    self.assertFalse(marker.exists())
 
     def stage_first_config(self, esp):
         (esp / 'EFI/BOOT/grub.cfg').write_text('obsolete first-stage config\n')

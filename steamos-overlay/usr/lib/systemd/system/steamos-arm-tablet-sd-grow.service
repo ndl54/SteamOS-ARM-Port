@@ -1,0 +1,12 @@
+[Unit]
+Description=Grow SteamOS to the whole microSD card (first boot)
+ConditionFirmware=device-tree-compatible(lenovo,elden)
+After=local-fs.target steamos-arm-tablet-firmware.service steamos-arm-tablet-boot-ok.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=6min
+ExecStart=/usr/lib/steamos-arm/tablet-sd-grow
+
+[Install]
+WantedBy=multi-user.target

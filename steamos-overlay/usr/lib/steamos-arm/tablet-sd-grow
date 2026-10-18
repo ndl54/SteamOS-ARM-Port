@@ -1,0 +1,5 @@
+#!/bin/bash
+# Elden only; grow an explicitly supported single-root-partition SD image.
+# Whole-device ext4 roots have no partition table and are left alone.
+set -euo pipefail
+exec /usr/bin/python3 "$(dirname "$0")/tablet-storage" grow

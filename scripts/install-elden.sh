@@ -48,6 +48,13 @@ install -Dm0755 "$O/usr/lib/steamos-arm/tablet-boot-ok" "$R/usr/lib/steamos-arm/
 install -Dm0644 "$O/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service" "$R/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service"
 mkdir -p "$R/usr/lib/systemd/system/multi-user.target.wants"
 ln -sfn ../steamos-arm-tablet-boot-ok.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tablet-boot-ok.service"
+# SD dual-boot runtime support. The recipe/converter still default to userdata;
+# do not enable card growth until a supported SD image is explicitly prepared.
+for helper in tablet-slot tablet-sd-grow tablet-storage; do
+  install -Dm0755 "$O/usr/lib/steamos-arm/$helper" "$R/usr/lib/steamos-arm/$helper"
+done
+install -Dm0644 "$O/usr/lib/systemd/system/steamos-arm-tablet-sd-grow.service" \
+  "$R/usr/lib/systemd/system/steamos-arm-tablet-sd-grow.service"
 # Touch reports the portrait panel's coordinates, and it is on SPI, which
 # gamescope doesn't tie to a display (only I2C and USB), so it never rotates
 # it. Game Mode turns the panel right (GAMESCOPE_ORIENTATION on the 8 Elite):

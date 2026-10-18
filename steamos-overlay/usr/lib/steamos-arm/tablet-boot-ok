@@ -5,6 +5,9 @@
 # Qualcomm keeps the slot state in the GPT attributes of boot_a / boot_b:
 # bit 50 active, 51-53 retry count, 54 successful, 55 unbootable.
 set -u
+# Serialize with the SD slot switch; do not mark A during a concurrent switch.
+exec 9>/run/lock/tablet-gpt.lock || exit 1
+flock -n 9 || { echo "tablet GPT operation in progress" >&2; exit 1; }
 for s in a b; do
   part=$(readlink -f "/dev/disk/by-partlabel/boot_$s" 2>/dev/null) || continue
   [[ -b $part ]] || continue

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Elden only. Requires a prepared SD dual boot and stock ZUXOS retained on A.
+# Return to SteamOS from ZUXOS with fastboot set_active b.
+set -euo pipefail
+case "${1:-status}" in
+  android|status|check) ;;
+  *) echo 'usage: tablet-slot status|check|android' >&2; exit 2 ;;
+esac
+exec /usr/bin/python3 "$(dirname "$0")/tablet-storage" slot "${1:-status}"
