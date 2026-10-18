@@ -36,6 +36,7 @@ values = {
     ('shell', 'getprop', 'ro.build.display.id'): '18.0.12.104',
     ('shell', "su -c 'id'"): 'uid=0(root)',
     ('shell', "su -c 'rmdir /data/adb/steamos-gen5/operation.lock'"): '',
+    ('shell', "su -c 'sh /data/local/tmp/sg5-card.sh'"): '',
 }
 if args == ['exec-out', 'binary-probe']:
     sys.stdout.buffer.write(b'\x00\xff\r\nraw\rbytes')
@@ -186,12 +187,36 @@ class HostADB(unittest.TestCase):
         result = self.run_host(PUSHES[0] + '\necho SHOULD_NOT_RUN', success=False)
         self.assertEqual(result.returncode, 23)
         self.assertNotIn(b'SHOULD_NOT_RUN', result.stdout)
+        self.assertIn(b'ERROR: stopped at line', result.stderr)
+
+    def test_error_diagnostics_in_functions_substitutions_and_pipelines(self):
+        for name in ('adb', 'adb.exe'):
+            self.env['ADB'] = str(self.setup_adb(name))
+            for body in ('broken() { return 37; }; broken',
+                         'value="$(exit 37)"', '(exit 37) | tr -d x'):
+                with self.subTest(name=name, body=body):
+                    result = self.run_host(body + '\necho SHOULD_NOT_RUN', success=False)
+                    self.assertEqual(result.returncode, 37)
+                    self.assertIn(b'ERROR: stopped at line', result.stderr)
+                    self.assertNotIn(b'ERROR:', result.stdout)
+                    self.assertNotIn(b'SHOULD_NOT_RUN', result.stdout)
 
     def test_binary_output_is_not_crlf_filtered(self):
         self.setup_adb('adb.exe')
         out = self.base / 'binary'
         self.run_host('adb exec-out binary-probe > ' + shlex.quote(str(out)))
         self.assertEqual(out.read_bytes(), b'\x00\xff\r\nraw\rbytes')
+
+    def test_card_failure_stops_before_success_even_after_lock_cleanup(self):
+        line = next(x for x in SOURCE.splitlines() if x.startswith('su_ "sh /data/local/tmp/sg5-card.sh"'))
+        for name in ('adb', 'adb.exe'):
+            self.env['ADB'] = str(self.setup_adb(name))
+            self.env['FAIL'] = 'sg5-card.sh'
+            result = self.run_host('locked=1\n' + line + '\necho SHOULD_NOT_RUN', success=False)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b'could not stage firmware on the card', result.stderr)
+            self.assertNotIn(b'SHOULD_NOT_RUN', result.stdout)
+            self.assertIn('operation.lock', self.log()[-1][-1])
 
     def test_cleanup_failure_and_prior_status(self):
         self.setup_adb()

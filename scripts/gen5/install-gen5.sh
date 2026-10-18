@@ -20,7 +20,9 @@
 #   6. with --switch: writes it to boot_a and restarts into SteamOS
 # Back to Android: Restart into ZUXOS in Handheld Control, or hold volume up
 # + volume down for 10 s.
-set -euo pipefail
+set -Eeuo pipefail
+# Never stop without saying why.
+trap 'printf "\nERROR: stopped at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 HERE="$(cd "$(dirname "$0")" && pwd)"
 KERNEL="$HERE/Image-gen5"
 MANIFEST="$HERE/firmware.tsv"
@@ -221,6 +223,8 @@ push "$W/firmware.tar" "$W/android-boot.sha256" /data/local/tmp/ >/dev/null
 cat > "$W/card.sh" <<'CARD'
 set -eu
 . /data/adb/steamos-gen5/storage.sh
+# part() validates a unique match and returns explicitly; a later nonmatching
+# uevent cannot fail discovery. Do not mask genuine remote/lookup failures.
 logs=$(part steamos-gen5-logs) && root=$(part steamos-gen5) || fail 'ambiguous/missing Gen5 card'
 [ "$logs" != "$root" ] && [ "$(parent "$logs")" = "$(parent "$root")" ] || fail 'card ancestry differs'
 disk=$(parent "$root")
@@ -230,18 +234,45 @@ unused "$logs"; unused "$root"
 m=$(mktemp -d /data/local/tmp/sg5.XXXXXX)
 mounted=0
 cleanup_card() {
-  if [ "$mounted" = 1 ]; then umount "$m" || { echo "mount retained: $m" >&2; return 1; }; fi
-  rmdir "$m"
+  status=$?
+  trap - EXIT
+  if [ "$status" != 0 ]; then echo "card stage failed ($status): $card_step" >&2; fi
+  if [ "$mounted" = 1 ]; then
+    umount "$m" || {
+      echo "mount retained: $m" >&2
+      [ "$status" != 0 ] || status=1
+      exit "$status"
+    }
+  fi
+  rmdir "$m" || { echo "card work directory retained: $m" >&2; [ "$status" != 0 ] || status=1; }
+  exit "$status"
 }
+card_step=mount
 trap cleanup_card EXIT
+# Android sh has no portable pipefail/ERR trap. Check sha256sum separately:
+# two failed/empty hashes must never compare equal and publish unverified data.
+card_hash() {
+  digest=$(sha256sum "$1") || return 1
+  digest=${digest%% *}
+  valid_hash "$digest" || return 1
+  printf '%s\n' "$digest"
+}
+verify_card_copy() {
+  expected=$(card_hash "$1") && actual=$(card_hash "$2") || fail "cannot hash card copy: $2"
+  [ "$expected" = "$actual" ] || fail "card readback failed: $2"
+}
 mount -t vfat -o nosuid,nodev,noexec "$logs" "$m"
 mounted=1
+card_step=copy
 cp /data/local/tmp/firmware.tar "$m/firmware.tar.new"
 cp /data/local/tmp/android-boot.sha256 "$m/android-boot.sha256.new"
-[ "$(hash /data/local/tmp/firmware.tar)" = "$(hash "$m/firmware.tar.new")" ] || fail 'firmware card readback failed'
-[ "$(hash /data/local/tmp/android-boot.sha256)" = "$(hash "$m/android-boot.sha256.new")" ] || fail 'hash card readback failed'
+card_step=readback
+verify_card_copy /data/local/tmp/firmware.tar "$m/firmware.tar.new"
+verify_card_copy /data/local/tmp/android-boot.sha256 "$m/android-boot.sha256.new"
+card_step=publish
 mv "$m/firmware.tar.new" "$m/firmware.tar"
 mv "$m/android-boot.sha256.new" "$m/android-boot.sha256"
+card_step=sync
 sync
 CARD
 push "$W/card.sh" /data/local/tmp/sg5-card.sh >/dev/null
