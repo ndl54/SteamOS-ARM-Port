@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read-only verification of mounted image contents; never runs a compositor."""
+import configparser
 import hashlib
 import json
 import os
@@ -117,9 +118,17 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
             assert digest(actual) == item['sha256'], rel
     for etc in (root/'etc', root/'var/lib/overlays/etc/upper'):
         if not etc.is_dir(): continue
+        policy=configparser.ConfigParser(interpolation=None)
+        policy.read(etc/'UPower/UPower.conf')
+        assert policy.getboolean('UPower','UsePercentageForPolicy')
+        assert policy.getint('UPower','PercentageCritical')==6 and policy.getint('UPower','PercentageAction')==4
+        assert policy.get('UPower','CriticalPowerAction')=='PowerOff'
         for unit in ('steamos-arm-os-release.service', 'steamos-arm-panel-calibration.service'):
             link = etc/'systemd/system/multi-user.target.wants'/unit
             assert link.is_symlink() and os.readlink(link) == '/usr/lib/systemd/system/'+unit
+
+    for rel in ('usr/lib/qt6/plugins/discover/packagekit-backend.so','usr/lib/qt6/plugins/discover-notifier/DiscoverPackageKitNotifier.so'):
+        assert not (root/rel).exists(), rel
 
     # CLI/library checks in the actual image, no real devices or compositor.
     # no-new-privs prevents the file capability from requesting privileges the
@@ -146,7 +155,7 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
             path='/'+str(p.relative_to(kde/'stage'))
             deps=subprocess.check_output(run+['/usr/bin/ldd','-r',path],stderr=subprocess.STDOUT,text=True)
             assert 'not found' not in deps and 'undefined symbol' not in deps, deps
-    return {'result': 'PASS' , 'hardware': 'not tested', 'kernel_release': krel,
+    return {'result': 'PASS', 'hardware': 'not tested', 'kernel_release': krel,
             'boot_payload': 'identical to tested kernel except preserved root cmdline',
             'runtime_versions': runtime, 'files_compared': len(checked),
             'capabilities': 'cap_sys_nice=eip at both Gamescope paths',

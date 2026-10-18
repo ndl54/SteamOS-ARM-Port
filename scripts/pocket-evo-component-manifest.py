@@ -41,6 +41,7 @@ def main():
         data={'source_commit':subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip(),
               'repo_inputs_sha256':inputs(),
               'outputs_sha256':outputs([kernel,gs/'src/gamescope',gs/'src/gamescopectl',gs/'src/gamescopereaper',gs/'src/gamescopestream',gs/'layer/libVkLayer_FROG_gamescope_wsi_aarch64.so',ip/'inputplumber-0.81.0-konkr',mh/'mangoapp',kde/'stage',kde/'kde-extras.tar']),
+              'kde_source_archives_sha256':{str(p):sha(p) for p in sorted((kde.parent/'kde-extras-src').glob('*.tar.xz'))},
               'kernel_config_sha256':sha(ks/'.config'),
               'kernel_patch_stamp':(ks/'.pocketevo-patched').read_text().strip(),
               'kernel_source_tar_sha256':sha(ks.parent/'cache/linux-7.2.8.tar.xz'),

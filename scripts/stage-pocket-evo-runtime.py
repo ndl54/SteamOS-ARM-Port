@@ -68,8 +68,16 @@ def main(root, home, manifest):
     changed=subprocess.check_output(['git','-C',str(REPO),'diff','--name-only','-z',base,'HEAD','--',str(plugins.relative_to(REPO))]).decode().split('\0')
     for name in filter(None,changed):
         src=REPO/name; rel=src.relative_to(plugins)
-        copy(src,root/'usr/share/steamos-odin/decky-plugins'/rel)
-        copy(src,home/'steamos/homebrew/plugins'/rel)
+        bundle = 'usr/share/steamos-arm/decky-plugins' if rel.parts[0] == 'decky-lsfg-vk-classic' else 'usr/share/steamos-odin/decky-plugins'
+        copy(src,root/bundle/rel)
+        dest=home/'steamos/homebrew/plugins'/rel
+        copy(src,dest)
+        owner=(home/'steamos').stat()
+        os.chown(dest,owner.st_uid,owner.st_gid,follow_symlinks=False)
+        parent=dest.parent
+        while parent != home/'steamos':
+            os.chown(parent,owner.st_uid,owner.st_gid,follow_symlinks=False)
+            parent=parent.parent
     # The seeded RUNSTEAM copy otherwise shadows the new system script.
     seeded=home/'steamos/.local/share/Steam/RUNSTEAM.sh'
     if seeded.exists(): copy(REPO/'steamos-overlay/usr/share/deckard/RUNSTEAM.sh',seeded)
@@ -79,7 +87,9 @@ def main(root, home, manifest):
             link=etc/'systemd/system/multi-user.target.wants'/unit
             link.parent.mkdir(parents=True,exist_ok=True)
             link.unlink(missing_ok=True); link.symlink_to('/usr/lib/systemd/system/'+unit)
-        subprocess.run([sys.executable,str(REPO/'scripts/configure-upower.py'),str(etc/'UPower/UPower.conf')],check=True)
+        policy=etc/'UPower/UPower.conf'
+        subprocess.run([sys.executable,str(REPO/'scripts/configure-upower.py'),str(policy)],check=True)
+        records[str(policy.relative_to(root))]={'generated_by':'scripts/configure-upower.py','sha256':sha(policy)}
     for f in ('usr/lib/qt6/plugins/discover/packagekit-backend.so','usr/lib/qt6/plugins/discover-notifier/DiscoverPackageKitNotifier.so'):
         (root/f).unlink(missing_ok=True)
     manifest.write_text(json.dumps({'baseline_source':base,'source_commit':subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip(),'files':records},indent=2)+'\n')

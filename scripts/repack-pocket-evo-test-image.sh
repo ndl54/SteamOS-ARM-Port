@@ -186,7 +186,7 @@ manifest = {
  'runtime_staging': json.loads((Path(os.environ['ART']) / 'runtime-staging.json').read_text()),
  'inputplumber_version': '0.81.0 with AYANEO polling and target-switch fixes',
  'base_release': 'hashtagbasit/SteamOS-ARM-Port v1.3.2 SM8550',
- 'base_os_release': (root/'etc/os-release').read_text(),
+ 'base_os_release': subprocess.check_output([str(root/'usr/bin/bwrap'),'--ro-bind',str(root),'/', '/usr/bin/cat','/etc/os-release'],text=True),
  'kernel_release': os.environ['KREL'],
  'kernel_recipe': 'kernel-pocketevo, Linux 7.2.8, GCC 15',
  'dtb': 'qcs8550-ayaneo-pocketevo',
