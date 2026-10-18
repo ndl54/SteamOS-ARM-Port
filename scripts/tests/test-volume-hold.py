@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fake evdev/clock/audio regressions; never opens input or runs pactl."""
 import os
+import io
 from pathlib import Path
 import runpy
 import struct
@@ -33,6 +34,7 @@ class Rig:
         self.actions, self.closed = [], []
         self.active, self.buffers = set(), {}
         self.scan = 0
+        self.wheel_fds = set()
         self.g.update(time=types.SimpleNamespace(monotonic=lambda: self.now,
             sleep=self.sleep, CLOCK_BOOTTIME=7,
             clock_gettime=lambda _: self.now + self.epoch),
@@ -44,7 +46,8 @@ class Rig:
 
     def open_devices(self, skip=frozenset()):
         self.scan += 1
-        return [(p, fd) for p, fd in (('event1', 10), ('event2', 20)) if p not in skip]
+        return [(p, fd, fd in self.wheel_fds)
+                for p, fd in (('event1', 10), ('event2', 20)) if p not in skip]
 
     def sleep(self, seconds):
         self.now += seconds
@@ -221,6 +224,119 @@ class VolumeHold(unittest.TestCase):
             g['pactl'] = pactl
             g['apply'](115)
             self.assertFalse(any(c[0].startswith('set-') for c in calls))
+
+
+class DmgWheel(unittest.TestCase):
+    def test_wheel_is_one_shot_and_filters_other_events(self):
+        r = Rig([(0, 10, [(2, 8, 1), (2, 8, 0), (2, 8, -1),
+                         (2, 6, 1), (2, 11, 120), (1, 115, 1)]),
+                 (.2, 20, [(2, 8, 1)])])
+        r.wheel_fds = {10}
+        self.assertEqual(r.run(), [(0, 115), (0, 114)])
+
+    def test_wheel_obeys_syn_dropped_barrier(self):
+        r = Rig([(0, 10, [(0, 3, 0), (2, 8, 1), (0, 0, 0), (2, 8, -1)])])
+        r.wheel_fds = {10}
+        self.assertEqual(r.run(), [(0, 114)])
+
+    def test_wheel_obeys_suspend_barrier(self):
+        r = Rig([(0, 10, [(2, 8, 1)]), (.2, 10, [(2, 8, 1)])])
+        r.wheel_fds = {10}
+        select = r.select
+        def resume_with_queued_wheel(*args):
+            result = select(*args)
+            if r.now >= .2:
+                r.epoch = 20
+            return result
+        r.g['select'].select = resume_with_queued_wheel
+        self.assertEqual(r.run(), [(0, 115)])
+        self.assertGreaterEqual(r.scan, 2)
+
+    def test_wheel_keeps_independent_key_hold_and_release(self):
+        r = Rig([(0, 20, key(115, 1)), (.1, 10, [(2, 8, -1)]),
+                 (.45, 20, key(115, 0))])
+        r.wheel_fds = {10}
+        self.assertEqual(r.run(), [(0, 115), (.1, 114), (.4, 115)])
+
+    def test_wheel_disconnect_hotplug_and_eagain(self):
+        r = Rig([(0, 10, [(2, 8, 1)]), (.1, 10, BlockingIOError()),
+                 (.2, 10, b''), (10.3, 10, [(2, 8, -1)])], until=11)
+        r.wheel_fds = {10}
+        self.assertEqual(r.run(), [(0, 115), (10.3, 114)])
+        self.assertEqual(r.closed.count(10), 2)
+
+    def test_board_requires_exact_compatible_token(self):
+        g = load_helper()
+        for raw, expected in ((b'ayaneo,pocketdmg\0qcom,sm8550\0', True),
+                              (b'ayaneo,pocketevo\0qcom,sm8550\0', False),
+                              (b'ayaneo,pocketace\0', False),
+                              (b'ayaneo,pocketdmg-other\0', False), (b'', False)):
+            with self.subTest(raw=raw):
+                g['open'] = lambda *a, **kw: io.BytesIO(raw)
+                self.assertEqual(g['is_pocket_dmg'](), expected)
+        g['open'] = lambda *a, **kw: (_ for _ in ()).throw(OSError('missing'))
+        self.assertFalse(g['is_pocket_dmg']())
+
+    def test_wheel_identity_requires_vendor_product_and_input0(self):
+        g = load_helper()
+        for vendor, product, phys, name, expected in (
+            ('1c4f', '0002', 'usb-1/input0', 'ayaneo device', True),
+            ('1c4f', '0002', 'usb-1/input1', 'ayaneo device', False),
+            ('1c4f', '0002', 'usb-1/input00', 'ayaneo device', False),
+            ('045e', '0002', 'usb-1/input0', 'ayaneo device', False),
+            ('1c4f', '0428', 'usb-1/input0', 'ayaneo device', False),
+            ('1c4f', '0002', 'usb-1/input0', 'generic mouse', False)):
+            with self.subTest(vendor=vendor, product=product, phys=phys, name=name):
+                attrs = {'id/vendor': vendor, 'id/product': product, 'phys': phys}
+                def fake_open(path, **kwargs):
+                    return io.StringIO(attrs[path.split('/device/')[1]] + '\n')
+                g['open'] = fake_open
+                self.assertEqual(g['is_dmg_wheel']('/dev/input/event7', name), expected)
+        g['open'] = lambda *a, **kw: (_ for _ in ()).throw(OSError('removed'))
+        self.assertFalse(g['is_dmg_wheel']('/dev/input/event7', 'ayaneo device'))
+
+    def test_discovery_does_not_open_wheel_on_evo_or_unrelated_device(self):
+        for dmg in (False, True):
+            g = load_helper()
+            names = {'wheel': 'AYANEO DEVICE', 'wrong-id': 'AYANEO DEVICE',
+                     'keys': 'gpio-keys', 'mouse': 'Generic mouse'}
+            opened = []
+            g.update(is_pocket_dmg=lambda: dmg,
+                     device_name=lambda path: names[path],
+                     is_dmg_wheel=lambda path, name: path == 'wheel',
+                     has_volume_keys=lambda fd: fd == 10,
+                     has_wheel=lambda fd: fd == 20,
+                     log=lambda _: None,
+                     glob=types.SimpleNamespace(glob=lambda _: list(names)),
+                     os=types.SimpleNamespace(O_RDONLY=0, O_NONBLOCK=1,
+                         open=lambda path, flags: opened.append(path) or
+                             {'keys': 10, 'wheel': 20}[path],
+                         close=lambda _: self.fail('unexpected close')))
+            self.assertEqual(g['open_devices'](), [('keys', 10, False)] +
+                             ([('wheel', 20, True)] if dmg else []))
+            self.assertEqual(opened, ['keys'] + (['wheel'] if dmg else []))
+            self.assertEqual(g['open_devices'](frozenset(names)), [])
+
+    def test_wheel_capability_ioctl_and_missing_capability_close(self):
+        g = load_helper()
+        def ioctl(fd, request, bits, mutate):
+            self.assertEqual(request, (2 << 30) | (2 << 16) | (ord('E') << 8) | 0x22)
+            bits[1] = 1  # REL_WHEEL bit 8
+        g['fcntl'] = types.SimpleNamespace(ioctl=ioctl)
+        self.assertTrue(g['has_wheel'](20))
+        g['fcntl'].ioctl = lambda *a: None
+        self.assertFalse(g['has_wheel'](20))
+        g['fcntl'].ioctl = lambda *a: (_ for _ in ()).throw(OSError('gone'))
+        self.assertFalse(g['has_wheel'](20))
+        closed = []
+        g.update(is_pocket_dmg=lambda: True,
+                 is_dmg_wheel=lambda *a: True,
+                 device_name=lambda _: 'AYANEO DEVICE',
+                 glob=types.SimpleNamespace(glob=lambda _: ['wheel']),
+                 os=types.SimpleNamespace(O_RDONLY=0, O_NONBLOCK=1,
+                     open=lambda *a: 20, close=closed.append))
+        self.assertEqual(g['open_devices'](), [])
+        self.assertEqual(closed, [20])
 
 
 if __name__ == '__main__':

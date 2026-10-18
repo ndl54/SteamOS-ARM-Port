@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Odin2 volume rocker: gpio-keys = VOLUP, pmic_resin = VOLDOWN → wpctl.
+"""Handheld volume keys and the Pocket DMG wheel → PulseAudio volume steps.
 
 Do not grab USB/Bluetooth keyboards, mice, or the gamepad.
 
@@ -23,6 +23,8 @@ import sys
 EVENT_FMT = "llHHi"
 EVENT_SIZE = struct.calcsize(EVENT_FMT)
 EV_KEY = 0x01
+EV_REL = 0x02
+REL_WHEEL = 0x08
 KEY_MUTE = 113
 KEY_VOLUMEDOWN = 114
 KEY_VOLUMEUP = 115
@@ -89,23 +91,59 @@ def has_volume_keys(fd: int) -> bool:
     return bit(KEY_VOLUMEUP) or bit(KEY_VOLUMEDOWN) or bit(KEY_MUTE)
 
 
-def open_devices(skip: frozenset = frozenset()) -> list[tuple[str, int]]:
-    opened: list[tuple[str, int]] = []
+def has_wheel(fd: int) -> bool:
+    buf = array.array("B", [0] * 2)
+    ioc = (2 << 30) | (ord("E") << 8) | (0x20 + EV_REL) | (len(buf) << 16)
+    try:
+        fcntl.ioctl(fd, ioc, buf, True)
+    except OSError:
+        return False
+    return bool(buf[REL_WHEEL // 8] & (1 << (REL_WHEEL % 8)))
+
+
+def is_pocket_dmg() -> bool:
+    # This helper is shared with other boards. A device-name match alone
+    # must not turn an EVO/ACE/external mouse wheel into volume controls.
+    try:
+        with open("/sys/firmware/devicetree/base/compatible", "rb") as stream:
+            return b"ayaneo,pocketdmg" in stream.read().split(b"\0")
+    except OSError:
+        return False
+
+
+def is_dmg_wheel(path: str, dname: str) -> bool:
+    if "ayaneo device" not in dname:
+        return False
+    base = f"/sys/class/input/{os.path.basename(path)}/device"
+    try:
+        attrs = []
+        for attr in ("id/vendor", "id/product", "phys"):
+            with open(f"{base}/{attr}", encoding="utf-8") as stream:
+                attrs.append(stream.read().strip().lower())
+    except (OSError, UnicodeError):
+        return False
+    return attrs[:2] == ["1c4f", "0002"] and attrs[2].endswith("/input0")
+
+
+def open_devices(skip: frozenset = frozenset()) -> list[tuple[str, int, bool]]:
+    opened: list[tuple[str, int, bool]] = []
+    dmg = is_pocket_dmg()
     for path in sorted(glob.glob("/dev/input/event*")):
         if path in skip:
             continue
         dname = device_name(path).lower()
-        if not any(a in dname for a in ALLOW):
+        wheel_dev = dmg and is_dmg_wheel(path, dname)
+        if not wheel_dev and not any(a in dname for a in ALLOW):
             continue
         try:
             fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
         except OSError:
             continue
-        if not has_volume_keys(fd):
+        if not (has_wheel(fd) if wheel_dev else has_volume_keys(fd)):
             os.close(fd)
             continue
         log(f"watch {path} ({dname})")
-        opened.append((path, fd))
+        opened.append((path, fd, wheel_dev))
     return opened
 
 
@@ -175,7 +213,7 @@ def suspend_epoch() -> float:
 
 
 def main() -> int:
-    fds = {fd: path for path, fd in open_devices()}
+    fds = {fd: (path, wheel) for path, fd, wheel in open_devices()}
     if not fds:
         log("no volume devices yet, waiting")
     last_scan = time.monotonic()
@@ -198,11 +236,11 @@ def main() -> int:
         while True:
             if time.monotonic() - last_scan >= 10:
                 last_scan = time.monotonic()
-                for fd, path in list(fds.items()):
+                for fd, (path, _wheel) in list(fds.items()):
                     if not os.path.exists(path):
                         drop(fd)
-                for path, fd in open_devices(frozenset(fds.values())):
-                    fds[fd] = path
+                for path, fd, wheel in open_devices(frozenset(p for p, _ in fds.values())):
+                    fds[fd] = (path, wheel)
             timeout = 2.0 if not held else max(0.0, next_repeat - time.monotonic())
             try:
                 ready, _, _ = select.select(list(fds), [], [], timeout)
@@ -228,7 +266,7 @@ def main() -> int:
                 except OSError:
                     data = b""
                 if not data:
-                    log(f"lost {fds[fd]}")
+                    log(f"lost {fds[fd][0]}")
                     drop(fd)
                     continue
                 for off in range(0, len(data) - EVENT_SIZE + 1, EVENT_SIZE):
@@ -241,6 +279,11 @@ def main() -> int:
                     elif fd in desynced:
                         if etype == 0 and code == 0:  # SYN_REPORT
                             desynced.discard(fd)
+                    elif fds[fd][1]:
+                        # Wheel pulses are one-shot and obey the same dropped
+                        # event/suspend barrier as keys. Never start a hold.
+                        if etype == EV_REL and code == REL_WHEEL and value:
+                            apply(KEY_VOLUMEUP if value > 0 else KEY_VOLUMEDOWN)
                     elif etype == EV_KEY and code in (KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE):
                         key = (fd, code)
                         if value == 0:
