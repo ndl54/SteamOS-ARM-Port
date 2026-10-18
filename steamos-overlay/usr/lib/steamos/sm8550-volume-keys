@@ -2,12 +2,17 @@
 """Odin2 volume rocker: gpio-keys = VOLUP, pmic_resin = VOLDOWN → wpctl.
 
 Do not grab USB/Bluetooth keyboards, mice, or the gamepad.
+
+Holding a volume button keeps stepping until it is let go: these buttons
+send no key repeats, so the step repeats here after HOLD_DELAY seconds, then
+every HOLD_INTERVAL seconds.
 """
 from __future__ import annotations
 
 import array
 import fcntl
 import glob
+import math
 import os
 import select
 import struct
@@ -23,6 +28,17 @@ KEY_VOLUMEDOWN = 114
 KEY_VOLUMEUP = 115
 STEP = os.environ.get("SM8550_VOLUME_STEP", "5%")
 LIMIT = os.environ.get("SM8550_VOLUME_LIMIT", "1.0")
+
+def hold_seconds(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, str(default)))
+        return value if math.isfinite(value) and value >= 0.05 else default
+    except ValueError:
+        return default
+
+
+HOLD_DELAY = hold_seconds("SM8550_VOLUME_HOLD_DELAY", 0.4)
+HOLD_INTERVAL = hold_seconds("SM8550_VOLUME_HOLD_INTERVAL", 0.1)
 # InputPlumber's keyboard too: on the RP6 it grabs gpio-keys for the back
 # paddles, so Volume Up only comes through its keyboard (a grabbed device's
 # raw events reach nobody else, so nothing is counted twice).
@@ -107,16 +123,55 @@ def apply(code: int) -> None:
     # Step in the same (PulseAudio/cubic) scale as Steam's volume bar. wpctl
     # steps in a different scale: from ~20 % on the bar one "5 %-" step hit
     # zero and muted the sink.
-    if code == KEY_VOLUMEUP:
-        pactl("set-sink-mute", "@DEFAULT_SINK@", "0")
-        cur = pactl("get-sink-volume", "@DEFAULT_SINK@")
-        pct = int(cur.split("/")[1].strip().rstrip("%")) if "/" in cur else 0
+    if code not in (KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE):
+        return
+    # Resolve once per step: a default-route change between get/set must not
+    # apply the old sink's percentage to a different output.
+    sink = pactl("get-default-sink").strip()
+    if not sink:
+        return
+    if code == KEY_MUTE:
+        pactl("set-sink-mute", sink, "toggle")
+        return
+    try:
+        step = int(STEP.rstrip("%"))
+    except ValueError:
+        return
+    if step <= 0:
+        return
+    if code == KEY_VOLUMEDOWN:
+        # Preserve relative per-channel attenuation and the server's zero
+        # floor; an absolute first-channel value would reset stereo balance.
+        pactl("set-sink-volume", sink, f"-{step}%")
+        return
+    cur = pactl("get-sink-volume", sink)
+    try:
+        pct = int(cur.split("/")[1].strip().rstrip("%"))
         limit = int(float(LIMIT) * 100)
-        pactl("set-sink-volume", "@DEFAULT_SINK@", f"{min(limit, pct + int(STEP.rstrip('%')))}%")
-    elif code == KEY_VOLUMEDOWN:
-        pactl("set-sink-volume", "@DEFAULT_SINK@", f"-{STEP}")
-    elif code == KEY_MUTE:
-        pactl("set-sink-mute", "@DEFAULT_SINK@", "toggle")
+    except (IndexError, ValueError, OverflowError):
+        return  # Failed/malformed queries must not jump to a fabricated 0%.
+    if pct < 0 or limit < 0:
+        return
+    target = max(0, min(limit, pct + step))
+    pactl("set-sink-volume", sink, f"{target}%")
+    pactl("set-sink-mute", sink, "0")
+
+
+def key_is_down(fd: int, code: int) -> bool:
+    # EVIOCGKEY: a dropped release or disconnected device must not keep
+    # changing volume. Fail closed if the current state cannot be read.
+    bits = array.array("B", [0] * 96)
+    try:
+        fcntl.ioctl(fd, (2 << 30) | (len(bits) << 16) | (ord("E") << 8) | 0x18,
+                    bits, True)
+    except OSError:
+        return False
+    return bool(bits[code // 8] & (1 << (code % 8)))
+
+
+def suspend_epoch() -> float:
+    # Linux BOOTTIME includes suspend; MONOTONIC does not.
+    return time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()
 
 
 def main() -> int:
@@ -124,36 +179,92 @@ def main() -> int:
     if not fds:
         log("no volume devices yet, waiting")
     last_scan = time.monotonic()
-    while True:
-        # InputPlumber recreates its keyboard when its devices change: drop
-        # handles that died and pick up new devices every 10 s.
-        if time.monotonic() - last_scan >= 10:
-            last_scan = time.monotonic()
-            for fd, path in list(fds.items()):
-                if not os.path.exists(path):
-                    os.close(fd)
-                    del fds[fd]
-            for path, fd in open_devices(frozenset(fds.values())):
-                fds[fd] = path
-        if not fds:
-            time.sleep(2)
-            continue
-        try:
-            ready, _, _ = select.select(list(fds), [], [], 2.0)
-        except InterruptedError:
-            continue
-        for fd in ready:
+    epoch = suspend_epoch()
+    held: tuple[int, int] | None = None
+    down: set[tuple[int, int]] = set()
+    desynced: set[int] = set()
+    next_repeat = 0.0
+
+    def drop(fd: int) -> None:
+        nonlocal held
+        if held and held[0] == fd:
+            held = None
+        down.difference_update({key for key in down if key[0] == fd})
+        desynced.discard(fd)
+        os.close(fd)
+        del fds[fd]
+
+    try:
+        while True:
+            if time.monotonic() - last_scan >= 10:
+                last_scan = time.monotonic()
+                for fd, path in list(fds.items()):
+                    if not os.path.exists(path):
+                        drop(fd)
+                for path, fd in open_devices(frozenset(fds.values())):
+                    fds[fd] = path
+            timeout = 2.0 if not held else max(0.0, next_repeat - time.monotonic())
             try:
-                data = os.read(fd, EVENT_SIZE * 8)
-            except OSError:
-                log(f"lost {fds[fd]}")
-                os.close(fd)
-                del fds[fd]
+                ready, _, _ = select.select(list(fds), [], [], timeout)
+            except InterruptedError:
                 continue
-            for off in range(0, len(data) - EVENT_SIZE + 1, EVENT_SIZE):
-                _s, _us, etype, code, value = struct.unpack_from(EVENT_FMT, data, off)
-                if etype == EV_KEY and value == 1:
-                    apply(code)
+            current_epoch = suspend_epoch()
+            if current_epoch - epoch > 0.1:
+                # Discard queued pre-suspend presses too; require a fresh
+                # press after resume, even if a button is still down.
+                for fd in list(fds):
+                    drop(fd)
+                last_scan = time.monotonic() - 10
+                epoch = current_epoch
+                continue
+            epoch = current_epoch
+            # Process release/disconnect before a due timer. There is only
+            # one active direction (latest press); releasing it stops repeat.
+            for fd in ready:
+                try:
+                    data = os.read(fd, EVENT_SIZE * 64)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    data = b""
+                if not data:
+                    log(f"lost {fds[fd]}")
+                    drop(fd)
+                    continue
+                for off in range(0, len(data) - EVENT_SIZE + 1, EVENT_SIZE):
+                    _s, _us, etype, code, value = struct.unpack_from(EVENT_FMT, data, off)
+                    if etype == 0 and code == 3:  # SYN_DROPPED
+                        if held and held[0] == fd:
+                            held = None
+                        down.difference_update({key for key in down if key[0] == fd})
+                        desynced.add(fd)
+                    elif fd in desynced:
+                        if etype == 0 and code == 0:  # SYN_REPORT
+                            desynced.discard(fd)
+                    elif etype == EV_KEY and code in (KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE):
+                        key = (fd, code)
+                        if value == 0:
+                            down.discard(key)
+                            if held == key:
+                                held = None
+                        elif value == 1 and key not in down:
+                            down.add(key)
+                            apply(code)
+                            if code != KEY_MUTE:
+                                held = key
+                                next_repeat = time.monotonic() + HOLD_DELAY
+                        # Kernel autorepeat (value 2) is deliberately ignored.
+            if held and time.monotonic() >= next_repeat:
+                if key_is_down(*held):
+                    apply(held[1])
+                    # Never catch up missed ticks after slow audio commands.
+                    next_repeat = time.monotonic() + HOLD_INTERVAL
+                else:
+                    down.discard(held)
+                    held = None
+    finally:
+        for fd in list(fds):
+            drop(fd)
     return 0
 
 
