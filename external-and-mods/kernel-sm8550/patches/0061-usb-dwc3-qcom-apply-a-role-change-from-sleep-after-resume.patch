@@ -1,0 +1,159 @@
+From: hashtagbasit
+Subject: usb: dwc3: qcom: apply a role change from sleep after resume
+
+Defer role notifications while system sleep has removed the glue clocks.
+The runtime-PM status can still be active then, so a runtime get alone
+cannot make QSCRATCH writes safe. The upstream author reports resets on
+charger changes; hardware behavior has not been verified by this fork.
+
+Fork review: serialize notifications and system PM with role_lock. Replay
+the latest role only after glue and core resume succeed, without a runtime
+PM get/put inside the system-resume callback. Keep pending state on errors.
+Runtime callbacks do not take role_lock, avoiding recursion from the normal
+notifier's runtime get/put. No new work item or teardown lifetime is added.
+
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -10,6 +10,7 @@
+ #include <linux/irq.h>
+ #include <linux/of_clk.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/kernel.h>
+ #include <linux/interconnect.h>
+ #include <linux/platform_device.h>
+@@ -84,6 +85,10 @@
+ 	struct icc_path		*icc_path_ddr;
+ 	struct icc_path		*icc_path_apps;
+ 
++	/* Serializes role notifications with system suspend/resume. */
++	struct mutex		role_lock;
++	bool			role_pending;
++	enum usb_role		pending_role;
+ 	enum usb_role		current_role;
+ };
+ 
+@@ -558,31 +563,42 @@
+ 	return 0;
+ }
+ 
+-static void dwc3_qcom_set_role_notifier(struct dwc3 *dwc, enum usb_role next_role)
+-{
+-	struct dwc3_qcom *qcom = to_dwc3_qcom(dwc);
+-
++/* Caller holds role_lock and has resumed the glue. */
++static void dwc3_qcom_apply_role(struct dwc3_qcom *qcom, enum usb_role next_role)
++{
+ 	if (qcom->current_role == next_role)
+ 		return;
+-
+-	if (pm_runtime_resume_and_get(qcom->dev)) {
+-		dev_dbg(qcom->dev, "Failed to resume device\n");
+-		return;
+-	}
+ 
+ 	if (qcom->current_role == USB_ROLE_DEVICE)
+ 		dwc3_qcom_vbus_override_enable(qcom, false);
+ 	else if (qcom->current_role != USB_ROLE_DEVICE)
+ 		dwc3_qcom_vbus_override_enable(qcom, true);
+ 
++	qcom->current_role = next_role;
++}
++
++static void dwc3_qcom_set_role_notifier(struct dwc3 *dwc, enum usb_role next_role)
++{
++	struct dwc3_qcom *qcom = to_dwc3_qcom(dwc);
++
++	mutex_lock(&qcom->role_lock);
++	/* The runtime-PM state alone does not reflect system-sleep clocks. */
++	qcom->pending_role = next_role;
++	qcom->role_pending = true;
++	if (qcom->pm_suspended)
++		goto out;
++
++	if (pm_runtime_resume_and_get(qcom->dev) < 0) {
++		dev_dbg(qcom->dev, "Failed to resume device\n");
++		goto out;
++	}
++
++	dwc3_qcom_apply_role(qcom, next_role);
++	qcom->role_pending = false;
+ 	pm_runtime_mark_last_busy(qcom->dev);
+ 	pm_runtime_put_sync(qcom->dev);
+-
+-	/*
+-	 * Current role changes via usb_role_switch_set_role callback protected
+-	 * internally by mutex lock.
+-	 */
+-	qcom->current_role = next_role;
++out:
++	mutex_unlock(&qcom->role_lock);
+ }
+ 
+ static void dwc3_qcom_run_stop_notifier(struct dwc3 *dwc, bool is_on)
+@@ -623,6 +639,7 @@
+ 		return -ENOMEM;
+ 
+ 	qcom->dev = &pdev->dev;
++	mutex_init(&qcom->role_lock);
+ 
+ 	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
+ 	if (IS_ERR(qcom->resets)) {
+@@ -752,17 +769,20 @@
+ 	bool wakeup = device_may_wakeup(dev);
+ 	int ret;
+ 
++	/* Exclude notifier writes before either core or glue loses power. */
++	mutex_lock(&qcom->role_lock);
+ 	ret = dwc3_pm_suspend(&qcom->dwc);
+ 	if (ret)
+-		return ret;
++		goto out;
+ 
+ 	ret = dwc3_qcom_suspend(qcom, wakeup);
+ 	if (ret)
+-		return ret;
++		goto out;
+ 
+ 	qcom->pm_suspended = true;
+-
+-	return 0;
++out:
++	mutex_unlock(&qcom->role_lock);
++	return ret;
+ }
+ 
+ static int dwc3_qcom_pm_resume(struct device *dev)
+@@ -772,17 +792,24 @@
+ 	bool wakeup = device_may_wakeup(dev);
+ 	int ret;
+ 
++	mutex_lock(&qcom->role_lock);
+ 	ret = dwc3_qcom_resume(qcom, wakeup);
+ 	if (ret)
+-		return ret;
+-
++		goto out;
++
++	ret = dwc3_pm_resume(&qcom->dwc);
++	if (ret)
++		goto out;
++
++	/* Clocks/core are restored; do not recurse through runtime PM here. */
++	if (qcom->role_pending) {
++		dwc3_qcom_apply_role(qcom, qcom->pending_role);
++		qcom->role_pending = false;
++	}
+ 	qcom->pm_suspended = false;
+-
+-	ret = dwc3_pm_resume(&qcom->dwc);
+-	if (ret)
+-		return ret;
+-
+-	return 0;
++out:
++	mutex_unlock(&qcom->role_lock);
++	return ret;
+ }
+ 
+ static void dwc3_qcom_complete(struct device *dev)

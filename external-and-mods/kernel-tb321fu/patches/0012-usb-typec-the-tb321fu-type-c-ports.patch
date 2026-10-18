@@ -104,10 +104,9 @@ index c6179d870..34be1d903
  	if (IS_ERR(ptn3222->phy)) {
  		dev_err(dev, "failed to create PHY: %d\n", ret);
 diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
-index f43f73ac3..db8d51c06 100644
 --- a/drivers/usb/dwc3/dwc3-qcom.c
 +++ b/drivers/usb/dwc3/dwc3-qcom.c
-@@ -34,6 +34,7 @@
+@@ -35,6 +35,7 @@
  #define PIPE_UTMI_CLK_SEL			BIT(0)
  #define PIPE3_PHYSTATUS_SW			BIT(3)
  #define PIPE_UTMI_CLK_DIS			BIT(8)
@@ -115,16 +114,16 @@ index f43f73ac3..db8d51c06 100644
  
  #define PWR_EVNT_LPM_IN_L2_MASK			BIT(4)
  #define PWR_EVNT_LPM_OUT_L2_MASK		BIT(5)
-@@ -85,6 +86,8 @@ struct dwc3_qcom {
- 	struct icc_path		*icc_path_apps;
- 
+@@ -90,6 +91,8 @@
+ 	bool			role_pending;
+ 	enum usb_role		pending_role;
  	enum usb_role		current_role;
 +	bool			host_ss_powerup_quirk;
 +	bool			host_usb2_phy_reinit_quirk;
  };
  
  #define to_dwc3_qcom(d) container_of((d), struct dwc3_qcom, dwc)
-@@ -436,6 +439,96 @@ static void dwc3_qcom_select_utmi_clk(struct dwc3_qcom *qcom)
+@@ -441,6 +444,96 @@
  			  PIPE_UTMI_CLK_DIS);
  }
  
@@ -221,10 +220,10 @@ index f43f73ac3..db8d51c06 100644
  static int dwc3_qcom_request_irq(struct dwc3_qcom *qcom, int irq,
  				 const char *name)
  {
-@@ -562,8 +655,14 @@ static void dwc3_qcom_set_role_notifier(struct dwc3 *dwc, enum usb_role next_rol
+@@ -566,13 +659,26 @@
+ /* Caller holds role_lock and has resumed the glue. */
+ static void dwc3_qcom_apply_role(struct dwc3_qcom *qcom, enum usb_role next_role)
  {
- 	struct dwc3_qcom *qcom = to_dwc3_qcom(dwc);
- 
 -	if (qcom->current_role == next_role)
 +	if (qcom->current_role == next_role) {
 +		dev_dbg(qcom->dev, "role no-op current=%d next=%d xhci=%p\n",
@@ -235,35 +234,33 @@ index f43f73ac3..db8d51c06 100644
 +	dev_dbg(qcom->dev, "role change current=%d next=%d xhci=%p\n",
 +		qcom->current_role, next_role, qcom->dwc.xhci);
  
- 	if (pm_runtime_resume_and_get(qcom->dev)) {
- 		dev_dbg(qcom->dev, "Failed to resume device\n");
-@@ -575,6 +674,13 @@ static void dwc3_qcom_set_role_notifier(struct dwc3 *dwc, enum usb_role next_rol
+ 	if (qcom->current_role == USB_ROLE_DEVICE)
+ 		dwc3_qcom_vbus_override_enable(qcom, false);
  	else if (qcom->current_role != USB_ROLE_DEVICE)
  		dwc3_qcom_vbus_override_enable(qcom, true);
- 
++
 +	if (next_role == USB_ROLE_HOST && qcom->host_usb2_phy_reinit_quirk &&
 +	    qcom->current_role == USB_ROLE_NONE)
 +		dwc3_qcom_reinit_usb2_phys(qcom);
 +
 +	if (next_role == USB_ROLE_HOST && qcom->host_ss_powerup_quirk)
 +		dwc3_qcom_host_ss_powerup_quirk(qcom);
-+
- 	pm_runtime_mark_last_busy(qcom->dev);
- 	pm_runtime_put_sync(qcom->dev);
  
-@@ -683,6 +789,11 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
+ 	qcom->current_role = next_role;
+ }
+@@ -699,6 +805,11 @@
+ 				"qcom,select-utmi-as-pipe-clk");
  	if (ignore_pipe_clk)
  		dwc3_qcom_select_utmi_clk(qcom);
- 
++
 +	qcom->host_ss_powerup_quirk = device_property_read_bool(dev,
 +				"qcom,host-ss-powerup-quirk");
 +	qcom->host_usb2_phy_reinit_quirk = device_property_read_bool(dev,
 +				"qcom,host-usb2-phy-reinit-quirk");
-+
+ 
  	qcom->mode = usb_get_dr_mode(dev);
  
- 	if (qcom->mode == USB_DR_MODE_HOST) {
-@@ -711,6 +822,9 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
+@@ -728,6 +839,9 @@
  		goto clk_disable;
  	}
  
