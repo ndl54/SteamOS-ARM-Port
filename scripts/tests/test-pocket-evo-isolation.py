@@ -8,7 +8,9 @@ import tempfile
 import unittest
 
 REPO = Path(__file__).resolve().parents[2]
-BASE = '4673fa6'
+# Reviewed end of all 109 sources; earlier global byte equality was invalidated
+# by the explicitly authorized shared upstream changes.
+BASE = 'a656b80faf6e4853f07758414ea1dbbcdfec7ca1'
 
 
 def baseline(path):
@@ -16,7 +18,7 @@ def baseline(path):
 
 
 class Isolation(unittest.TestCase):
-    def test_shared_kernel_and_audio_files_match_before_pocket_evo_work(self):
+    def test_shared_files_preserve_reviewed_integration_except_thermal_repair(self):
         paths = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', BASE,
             'external-and-mods/kernel-sm8550', 'external-and-mods/kernel-sm8650',
             'external-and-mods/kernel-sm8750',
@@ -28,7 +30,10 @@ class Isolation(unittest.TestCase):
             if path.endswith('/ayaneo-AYANEOPocketEVO-.conf'):
                 continue
             with self.subTest(path=path):
-                self.assertEqual((REPO / path).read_bytes(), baseline(path))
+                if path == 'external-and-mods/kernel-sm8650/dts/sm8650-ayaneo-common.dtsi.append':
+                    self.assertTrue((REPO / path).read_bytes().startswith(baseline(path)))
+                else:
+                    self.assertEqual((REPO / path).read_bytes(), baseline(path))
 
     def recipe(self, device, override=''):
         return subprocess.run(['bash', '-c',

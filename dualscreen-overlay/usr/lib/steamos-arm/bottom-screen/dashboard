@@ -1013,35 +1013,45 @@ def vdf_text(text: str) -> dict:
 
 
 def vdf_binary(data: bytes) -> dict:
+    if len(data) > 16 * 1024 * 1024:
+        raise ValueError("oversized VDF")
     pos = 0
-
-    def cstr() -> str:
+    def cstr():
         nonlocal pos
         end = data.index(b"\0", pos)
-        out = data[pos:end].decode(errors="replace")
+        out = data[pos:end].decode("utf-8", errors="strict")
         pos = end + 1
         return out
-
-    def obj() -> dict:
+    def obj(depth=0):
         nonlocal pos
-        out: dict = {}
+        if depth > 64:
+            raise ValueError("VDF nesting limit")
+        out = {}
         while pos < len(data):
-            t = data[pos]
+            kind = data[pos]
             pos += 1
-            if t == 8:
+            if kind == 8:
                 return out
-            k = cstr()
-            if t == 0:
-                out[k] = obj()
-            elif t == 1:
-                out[k] = cstr()
-            elif t == 2:
-                out[k] = int.from_bytes(data[pos:pos + 4], "little")
-                pos += 4
+            key = cstr()
+            if key in out:
+                raise ValueError("duplicate VDF key")
+            if kind == 0:
+                out[key] = obj(depth + 1)
+            elif kind == 1:
+                out[key] = cstr()
+            elif kind in (2, 7):
+                size = 4 if kind == 2 else 8
+                if pos + size > len(data):
+                    raise ValueError("truncated VDF integer")
+                out[key] = int.from_bytes(data[pos:pos+size], "little")
+                pos += size
             else:
-                raise ValueError(t)
-        return out
-    return obj()
+                raise ValueError("unsupported VDF type")
+        raise ValueError("unterminated VDF object")
+    result = obj()
+    if pos != len(data):
+        raise ValueError("trailing VDF data")
+    return result
 
 
 _recent_cache: tuple[float, list] = (0.0, [])
@@ -1827,7 +1837,9 @@ class UInputDevice:
 
     def emit(self, events: list[tuple[int, int, int]]) -> None:
         data = b"".join(struct.pack("qqHHi", 0, 0, t, c, v) for t, c, v in events)
-        os.write(self.fd, data + struct.pack("qqHHi", 0, 0, EV_SYN, 0, 0))
+        data += struct.pack("qqHHi", 0, 0, EV_SYN, 0, 0)
+        if os.write(self.fd, data) != len(data):
+            raise OSError("partial uinput event write")
 
 
 class RemoteInput:
@@ -1898,6 +1910,10 @@ class RemoteInput:
     def _devices(self) -> bool:
         if self.mouse and self.keys:
             return True
+        for device in (self.mouse, self.keys):
+            if device:
+                device.close()
+        self.mouse = self.keys = None
         try:
             self.mouse = UInputDevice("SteamOS Bottom Screen Trackpad", list(BUTTONS.values()),
                                       [REL_X, REL_Y, REL_WHEEL, REL_HWHEEL], 0x5301)

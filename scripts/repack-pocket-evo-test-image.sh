@@ -3,10 +3,14 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source_commit=$(git -C "$ROOT" rev-parse HEAD)
-[[ -z $(git -C "$ROOT" status --porcelain --untracked-files=no) ]]
+[[ -z $(git -C "$ROOT" status --porcelain) ]]
 base_image=${BASE_IMAGE:-$(cat /work/image-path)}
 output=$(readlink -f "${KERNEL_OUTPUT:?set KERNEL_OUTPUT to the validated kernel output}")
 GSBUILD=${GAMESCOPE_BUILD:?set GAMESCOPE_BUILD to the validated Gamescope build}
+IPBUILD=${INPUTPLUMBER_BUILD:?set INPUTPLUMBER_BUILD to freshly built output}
+MHBUILD=${MANGOHUD_BUILD:?set MANGOHUD_BUILD to freshly built mangoapp output}
+KSOURCE=${KERNEL_SOURCE:?set KERNEL_SOURCE to the freshly prepared and built kernel tree}
+PROVENANCE=${COMPONENT_MANIFEST:?set COMPONENT_MANIFEST to verified build input/output manifest}
 krel=$(basename "$output")
 [[ $krel == 7.2.8-pocketevo-steamos ]]
 [[ -s $output/boot/KERNEL && -d $output/modules/$krel ]]
@@ -16,8 +20,10 @@ mkdir "$ART"
 ART=$(readlink -f "$ART")
 exec > >(tee "$ART/image-build.log") 2>&1
 export ART
-python3 /src/scripts/verify-pocket-evo-kernel.py /work/kernel-pocketevo/linux-7.2.8 "$output"
-work=$(mktemp -d /work/pocketevo-image.XXXXXX)
+python3 /src/scripts/verify-pocket-evo-kernel.py "$KSOURCE" "$output"
+python3 /src/scripts/pocket-evo-component-manifest.py verify "$PROVENANCE"
+cp "$PROVENANCE" "$ART/component-manifest.json"
+work=$(mktemp -d "${IMAGE_WORK_PARENT:-/artifacts}/pocketevo-image.XXXXXX")
 mnt=$work/mnt
 mkdir -p "$mnt/boot" "$mnt/root" "$mnt/home"
 export IMAGE_MOUNT=$mnt
@@ -27,12 +33,32 @@ printf '%s  %s\n' "$base_sha" "$base_image" > "$ART/base-image.sha256"
 cp --reflink=auto --sparse=always "$base_image" "$image"
 [[ $(sha256sum "$image" | awk '{print $1}') == "$base_sha" ]]
 export BASE_IMAGE_SHA256=$base_sha GAMESCOPE_BUILD=$GSBUILD KERNEL_OUTPUT=$output
+BASE="$base_image" COPY="$image" python3 - <<'PYCODE'
+import json, os, subprocess
+from pathlib import Path
+def identity(p):
+    data=json.loads(subprocess.check_output(['sfdisk','--json',p]))['partitiontable']
+    data.pop('device',None)
+    for part in data['partitions']: part.pop('node',None)
+    return data
+base=identity(os.environ['BASE']); copy=identity(os.environ['COPY'])
+assert base==copy
+(Path(os.environ['ART'])/'partition-identity.json').write_text(json.dumps(base,indent=2)+'\n')
+PYCODE
 loop=$(losetup --find --show --partscan "$image")
 cleanup() {
-  umount "${mnt}/home" 2>/dev/null || true
-  umount "${mnt}/root" 2>/dev/null || true
-  umount "${mnt}/boot" 2>/dev/null || true
-  losetup -d "$loop"
+  local rc=$? failed=0
+  trap - EXIT
+  for point in "${mnt}/home" "${mnt}/root" "${mnt}/boot"; do
+    if mountpoint -q "$point"; then
+      umount "$point" || failed=1
+    fi
+  done
+  if [[ $failed == 0 ]]; then
+    losetup -d "$loop" || failed=1
+  fi
+  [[ $rc != 0 ]] || rc=$failed
+  exit "$rc"
 }
 trap cleanup EXIT
 for p in 1 2 3; do
@@ -71,6 +97,8 @@ rsync -a "$output/firmware/" "${mnt}/root/usr/lib/firmware/"
 depmod -b "${mnt}/root" "$krel"
 install -m644 "$output/config-$krel" "${mnt}/root/usr/lib/modules/$krel/config"
 install -m644 "$output/System.map-$krel" "${mnt}/root/usr/lib/modules/$krel/System.map"
+python3 /src/scripts/stage-pocket-evo-runtime.py "${mnt}/root" "${mnt}/home" "$ART/runtime-staging.json"
+install -m755 "$MHBUILD/mangoapp" "${mnt}/root/usr/bin/mangoapp"
 for entry in \
   steamos-overlay/usr/lib/steamos/sm8550-audio-pipewire \
   steamos-overlay/usr/lib/steamos-arm/steamos-arm-wifi-wake \
@@ -83,8 +111,8 @@ for entry in \
 done
 bash /src/scripts/install-pocket-evo-display.sh "${mnt}/root" "$GSBUILD"
 # Reuse the existing InputPlumber installation; update its validated binary/maps.
-(cd /src/external-and-mods/InputPlumber && sha256sum -c inputplumber-0.81.0-konkr.sha256)
-install -m755 /src/external-and-mods/InputPlumber/inputplumber-0.81.0-konkr "${mnt}/root/usr/bin/inputplumber"
+(cd "$IPBUILD" && sha256sum -c inputplumber-0.81.0-konkr.sha256)
+install -m755 "$IPBUILD/inputplumber-0.81.0-konkr" "${mnt}/root/usr/bin/inputplumber"
 for etc in "${mnt}/root/etc" "${mnt}/root/var/lib/overlays/etc/upper"; do
   [[ -d "$etc" ]] || continue
   mkdir -p "$etc/inputplumber"
@@ -151,7 +179,9 @@ manifest = {
  'source_commit': os.environ['SOURCE_COMMIT'],
  'base_image_sha256': os.environ['BASE_IMAGE_SHA256'],
  'gamescope_version': '3.16.30-steamos-arm',
- 'gamescope_source_commit': '3ad7c44339521e010fdf4e8471abb24174265f52',
+ 'gamescope_source_commit': os.environ['SOURCE_COMMIT'],
+ 'component_manifest': json.loads((Path(os.environ['ART']) / 'component-manifest.json').read_text()),
+ 'runtime_staging': json.loads((Path(os.environ['ART']) / 'runtime-staging.json').read_text()),
  'inputplumber_version': '0.81.0 with AYANEO polling and target-switch fixes',
  'base_release': 'hashtagbasit/SteamOS-ARM-Port v1.3.2 SM8550',
  'base_os_release': (root/'etc/os-release').read_text(),
@@ -176,7 +206,7 @@ test -s "${mnt}/root/usr/lib/modules/$krel/modules.dep"
 for m in nf_tables nft_ct nft_nat nft_masq nft_redir nft_reject_inet nft_log nft_limit nft_fib_inet chipone_tddi; do
   modinfo -b "${mnt}/root" -k "$krel" "$m" | sed -n '1p;/^vermagic:/p'
 done
-python3 /src/scripts/verify-pocket-evo-image.py "${mnt}/root" "${mnt}/boot" "${mnt}/home" "$output" "$GSBUILD" > "$ART/image-verification.json"
+python3 /src/scripts/verify-pocket-evo-image.py "${mnt}/root" "${mnt}/boot" "${mnt}/home" "$output" "$GSBUILD" "$IPBUILD" "$MHBUILD" > "$ART/image-verification.json"
 sync
 umount "${mnt}/home" "${mnt}/root" "${mnt}/boot"
 fsck.fat -n "${loop}p1"
@@ -186,6 +216,14 @@ losetup -d "$loop"
 trap - EXIT
 artifact="steamos-pocketevo-v1.3.2-${source_commit:0:7}-armada-complete-test.img"
 [[ $(sha256sum "$base_image" | awk '{print $1}') == "$base_sha" ]]
+IMAGE="$image" python3 - <<'PYCODE'
+import json,os,subprocess
+from pathlib import Path
+value=json.loads(subprocess.check_output(['sfdisk','--json',os.environ['IMAGE']]))['partitiontable']
+value.pop('device',None)
+for part in value['partitions']: part.pop('node',None)
+assert value==json.loads((Path(os.environ['ART'])/'partition-identity.json').read_text())
+PYCODE
 cp --sparse=always "$image" "$ART/$artifact.partial"
 mv "$ART/$artifact.partial" "$ART/$artifact"
 sha256sum "$image" | awk -v name="$artifact" '{print $1"  "name}' > "$ART/IMAGE-SHA256.txt"

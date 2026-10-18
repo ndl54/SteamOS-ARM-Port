@@ -15,7 +15,7 @@ def digest(p):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def verify(root, boot, home, kernel, gamescope):
+def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud):
     krel = kernel.name
     checked = {}
 
@@ -59,7 +59,8 @@ def verify(root, boot, home, kernel, gamescope):
                     same(root/prefix/'share/gamescope'/p.relative_to(REPO/'external-and-mods/gamescope'), p)
     manifest = json.loads((root/'usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.aarch64.json').read_text())
     assert (root/manifest['layer']['library_path'].lstrip('/')).is_file()
-    same(root/'usr/bin/inputplumber', REPO/'external-and-mods/InputPlumber/inputplumber-0.81.0-konkr')
+    same(root/'usr/bin/inputplumber', inputplumber/'inputplumber-0.81.0-konkr')
+    same(root/'usr/bin/mangoapp', mangohud/'mangoapp')
     for path in (
         'steamos-overlay/usr/lib/steamos/gamescope-session',
         'steamos-overlay/usr/lib/steamos/sm8550-audio-pipewire',
@@ -101,6 +102,20 @@ def verify(root, boot, home, kernel, gamescope):
     for path, sha in json.loads((REPO/'docs/audit/pocket-evo-preserved-files.json').read_text()).items():
         assert digest(REPO/path) == sha, path
 
+    embedded = json.loads((boot/'pocketevo-build.json').read_text())
+    assert embedded == json.loads((root/'usr/lib/steamos-arm/pocketevo-build.json').read_text())
+    for rel, item in embedded['runtime_staging']['files'].items():
+        actual = home/rel[5:] if rel.startswith('HOME/') else root/rel
+        if 'symlink' in item:
+            assert actual.is_symlink() and os.readlink(actual) == item['symlink'], rel
+        else:
+            assert digest(actual) == item['sha256'], rel
+    for etc in (root/'etc', root/'var/lib/overlays/etc/upper'):
+        if not etc.is_dir(): continue
+        for unit in ('steamos-arm-os-release.service', 'steamos-arm-panel-calibration.service'):
+            link = etc/'systemd/system/multi-user.target.wants'/unit
+            assert link.is_symlink() and os.readlink(link) == '/usr/lib/systemd/system/'+unit
+
     # CLI/library checks in the actual image, no real devices or compositor.
     # no-new-privs prevents the file capability from requesting privileges the
     # builder does not have; its on-disk value is checked independently above.
@@ -116,7 +131,7 @@ def verify(root, boot, home, kernel, gamescope):
             path = f'/{prefix}/bin/{exe}'
             deps = subprocess.check_output(run + ['/usr/bin/ldd', '-r', path], stderr=subprocess.STDOUT, text=True)
             assert 'not found' not in deps and 'undefined symbol' not in deps, deps
-    for path in ('/usr/bin/inputplumber', '/usr/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so', '/usr/local/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so'):
+    for path in ('/usr/bin/mangoapp', '/usr/bin/inputplumber', '/usr/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so', '/usr/local/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so'):
         deps = subprocess.check_output(run + ['/usr/bin/ldd', '-r', path], stderr=subprocess.STDOUT, text=True)
         assert 'not found' not in deps and 'undefined symbol' not in deps, deps
     return {'result': 'PASS', 'hardware': 'not tested', 'kernel_release': krel,

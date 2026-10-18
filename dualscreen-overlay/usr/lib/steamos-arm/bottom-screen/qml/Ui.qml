@@ -100,7 +100,7 @@ QtObject {
             drainRemote()
         })
     }
-    Timer {
+    property Timer remoteHeartbeat: Timer {
         interval: 500; repeat: true; running: ui.remoteSession !== ""
         onTriggered: ui.send("/remote/keepalive", {})
     }
