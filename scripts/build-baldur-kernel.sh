@@ -41,6 +41,17 @@ for p in "$P"/patches/*.patch; do
   n=$((n + 1))
 done
 echo "applied $n board patches"
+# Ours on top (kernel-baldur/patches: ath12k 5 GHz scanning and TX during
+# scans, from github.com/mydanyi/armadaos-freedom). Retain the pinned
+# skin and junction thermal policy; see the local DTS review note.
+K="$ROOT/external-and-mods/kernel-baldur"
+for p in "$K"/patches/*.patch; do
+  patch -d "$W/build/linux" -p1 -s --batch --fuzz=0 --no-backup-if-mismatch < "$p" || die "patch $(basename "$p")"
+done
+dq="$W/build/linux/arch/arm64/boot/dts/qcom"
+cp "$K/dts/baldur-gpu-no-skin-throttle.dtsi" "$dq/"
+grep -q '"baldur-skin-thermal.dtsi"' "$dq/kaanapali-lenovo-baldur-display.dts" || die "display dts without skin thermal"
+echo '#include "baldur-gpu-no-skin-throttle.dtsi"' >> "$dq/kaanapali-lenovo-baldur-display.dts"
 cp "$CPIO" "$W/build/initrd.cpio"
 cat "$ROOT/external-and-mods/kernel-common/steamos.config" "$ROOT/external-and-mods/kernel-baldur/steamos.config" \
   > "$W/build/steamos.fragment"
@@ -52,7 +63,7 @@ docker run --rm -v "$W/build:/build" -w /build/linux \
     export DEBIAN_FRONTEND=noninteractive
     apt-get -qq update >/dev/null
     apt-get -qq install -y clang-18 lld-18 llvm-18 make bc bison flex libssl-dev libelf-dev python3 \
-      cpio kmod xz-utils zstd perl rsync >/dev/null
+      cpio kmod xz-utils zstd perl rsync device-tree-compiler >/dev/null
     for t in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-strip llvm-readelf; do
       ln -sf /usr/bin/$t-18 /usr/local/bin/$t; done
     M="make ARCH=arm64 LLVM=1 O=/build/out"
@@ -68,6 +79,10 @@ docker run --rm -v "$W/build:/build" -w /build/linux \
       grep -qx "$o" /build/out/.config || { echo "config: $o did not stick"; exit 1; }
     done
     $M -j"$(nproc)" dtbs >/dev/null
+    d=/build/out/arch/arm64/boot/dts/qcom/kaanapali-lenovo-baldur-display.dtb
+    for m in map0 map1 map2 map3 map4 map5 map6 map7 map8 map9 map10; do
+      fdtget -l $d /thermal-zones/quiet-thermal/cooling-maps | grep -qx $m || { echo "dtb: skin protection $m missing"; exit 1; }
+    done
     $M -j"$(nproc)" Image modules
     rm -rf /build/mods; $M INSTALL_MOD_PATH=/build/mods INSTALL_MOD_STRIP=1 modules_install >/dev/null
     $M M=/build/port/kernel/out-of-tree/aw882xx CONFIG_SND_SOC_AW882XX=m modules

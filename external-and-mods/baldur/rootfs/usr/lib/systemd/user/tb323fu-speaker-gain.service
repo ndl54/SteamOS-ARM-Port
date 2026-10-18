@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT
+# Retain conservative amplifier attenuation, including on failed startup.
+[Unit]
+Description=Conservative speaker gain and filtered output selection
+After=pipewire.service wireplumber.service
+BindsTo=pipewire.service wireplumber.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/tb323fu/tb323fu-speaker-gain on
+ExecStopPost=/usr/libexec/tb323fu/tb323fu-speaker-gain off
+
+[Install]
+WantedBy=pipewire.service wireplumber.service

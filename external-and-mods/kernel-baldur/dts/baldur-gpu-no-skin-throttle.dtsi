@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Review of e112c6a: intentionally retain baldur-skin-thermal.dtsi unchanged.
+ * The proposed deletion of map2/map5/map8/map10 removes all GPU cooling
+ * driven by the board NTC (44/46/48/50 C). A 105 C GPU junction trip does not
+ * replace enclosure-temperature protection. CPU throttling alone and Android
+ * game-profile claims do not establish a safe sustained GPU power envelope.
+ * No board thermal measurements are available for this port in this review.
+ * Keep this last include as a policy note; it makes no device-tree changes.
+ */
