@@ -1,0 +1,142 @@
+#!/usr/bin/python3
+"""Extend the stock player's subordinate IDs without remapping existing data.
+
+Boot-time only. Never relocate, merge or reorder existing allocations. Other
+login accounts are not selected implicitly; see docs/android-apps.md.
+"""
+import fcntl
+import grp
+import os
+from pathlib import Path
+import pwd
+import re
+import stat
+import sys
+import tempfile
+
+NEED = 131072
+# uid_t/gid_t -1 is reserved. Ranges below use an exclusive end.
+LIMIT = 2**32 - 1
+
+
+def plan(text, uid, host_ids):
+    """Return new file text, or reject a configuration requiring migration."""
+    lines = text.splitlines(keepends=True)
+    ranges = []
+    for index, line in enumerate(lines):
+        value = line.strip()
+        if not value or value.startswith('#'):
+            continue
+        fields = value.split(':')
+        if (len(fields) != 3 or not fields[0]
+                or not re.fullmatch(r'[0-9]+', fields[1])
+                or not re.fullmatch(r'[0-9]+', fields[2])):
+            raise ValueError(f'malformed subordinate-ID record at line {index + 1}')
+        owner, start, count = fields[0], int(fields[1]), int(fields[2])
+        if start < 1 or count < 1 or start + count > LIMIT:
+            raise ValueError(f'invalid/overflowing subordinate-ID range at line {index + 1}')
+        mine = owner == 'steamos' or (owner.isascii() and owner.isdecimal() and int(owner) == uid)
+        ranges.append((index, owner, start, count, mine))
+    own = [r for r in ranges if r[4]]
+    # Unknown prior mappings must not be replaced by a guessed fresh range.
+    if not own:
+        raise ValueError('steamos has no allocation; provision IDs after checking existing container storage')
+    # Multiple extents (including name/numeric aliases) can map differently
+    # across consumers. Leave them for an explicit mapping-aware migration.
+    if len(own) != 1:
+        raise ValueError('multiple steamos allocations; preserve them and inspect the actual mapping')
+    index, owner, start, count, _ = own[0]
+    count = max(count, NEED)
+    end = start + count
+    if end > LIMIT:
+        raise ValueError('expanded subordinate-ID range would overflow')
+    for other_index, _, other_start, other_count, _ in ranges:
+        if other_index != index and start < other_start + other_count and other_start < end:
+            raise ValueError('subordinate-ID collision; refusing to relocate existing data IDs')
+    if any(start <= host_id < end for host_id in host_ids):
+        raise ValueError('subordinate-ID range collides with a host account ID')
+    if count == own[0][3]:
+        return text  # Preserve sufficient custom ranges byte-for-byte.
+    lines[index] = f'{owner}:{start}:{count}\n'
+    return ''.join(lines)
+
+
+def snapshot(path):
+    info = path.lstat()  # Missing files are an error, not an empty allocation.
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError(f'{path}: expected a regular file with one link')
+    return path.read_text(encoding='ascii'), info
+
+
+def update(etc, uid, host_uids, host_gids):
+    # Match shadow's passwd lock; lock the stable lock file, not replaced inodes.
+    # This also serializes repeated invocations. Non-cooperating writers remain
+    # an administrator responsibility; run at boot before user managers.
+    with (etc / '.pwd.lock').open('a', encoding='ascii') as lock:
+        os.chmod(lock.name, 0o600)
+        fcntl.lockf(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        pending = []
+        staged = []
+        try:
+            for name, host_ids in [('subuid', host_uids), ('subgid', host_gids)]:
+                path = etc / name
+                old, info = snapshot(path)
+                new = plan(old, uid, host_ids)
+                if new != old:
+                    pending.append((path, old, new, info))
+            # Validate both and stage all writes before publishing either file.
+            for path, old, new, info in pending:
+                fd, tmp = tempfile.mkstemp(prefix=f'.{path.name}.', dir=etc)
+                staged.append((path, Path(tmp), old))
+                with os.fdopen(fd, 'w', encoding='ascii') as output:
+                    output.write(new)
+                    output.flush()
+                    if (info.st_uid, info.st_gid) != (os.geteuid(), os.getegid()):
+                        os.fchown(output.fileno(), info.st_uid, info.st_gid)
+                    os.fchmod(output.fileno(), stat.S_IMODE(info.st_mode))
+                    # Preserve Linux security labels and extended ACLs too.
+                    if hasattr(os, 'listxattr'):
+                        for attr in os.listxattr(path):
+                            os.setxattr(tmp, attr, os.getxattr(path, attr))
+                    os.fsync(output.fileno())
+            for path, tmp, old in staged:
+                if path.read_text(encoding='ascii') != old:
+                    raise ValueError(f'{path} changed concurrently; retry at a quiet boot')
+                os.replace(tmp, path)
+                print(f'android-subids: expanded {path} in place for steamos')
+            # Each replacement is atomic; interruption between files is safe to
+            # retry, but is deliberately not claimed to be a two-file transaction.
+        finally:
+            for _, tmp, _ in staged:
+                tmp.unlink(missing_ok=True)
+
+
+def main():
+    if os.geteuid() != 0:
+        raise ValueError('must run as root at boot before rootless containers start')
+    account = pwd.getpwnam('steamos')  # Missing/query failures must propagate.
+    if account.pw_uid == 0:
+        raise ValueError('steamos must be an unprivileged account')
+    etc = Path('/etc')
+    # A plugin-backed delegation source must not be silently edited as files.
+    for line in (etc / 'nsswitch.conf').read_text(encoding='ascii').splitlines():
+        value = line.split('#', 1)[0].strip()
+        key, sep, provider = value.partition(':')
+        if sep and key.strip() == 'subid' and provider.split() != ['files']:
+            raise ValueError('only the files subid provider is supported')
+    accounts = pwd.getpwall()
+    groups = grp.getgrall()
+    if not accounts or not groups:
+        raise ValueError('empty host account/group enumeration; cannot check collisions')
+    host_uids = {entry.pw_uid for entry in accounts} | {account.pw_uid}
+    host_gids = ({entry.gr_gid for entry in groups}
+                 | {entry.pw_gid for entry in accounts} | {account.pw_gid})
+    update(etc, account.pw_uid, host_uids, host_gids)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError) as error:
+        print(f'android-subids: {error}; allocations were not relocated; inspect before retrying', file=sys.stderr)
+        sys.exit(1)

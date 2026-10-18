@@ -1,0 +1,15 @@
+[Unit]
+Description=Enough user IDs for Android apps (Lepton)
+# Before the player logs in: rootless podman reads the ranges when the user's
+# first container starts. user@.service also orders lingering managers after us.
+# This prepares future namespaces; it does not refresh a live Podman namespace.
+Before=systemd-user-sessions.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/konkr/android-subids
+
+[Install]
+WantedBy=multi-user.target
