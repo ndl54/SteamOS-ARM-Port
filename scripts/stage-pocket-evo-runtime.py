@@ -22,6 +22,13 @@ def main(root, home, manifest):
     base = json.loads((root/'usr/lib/steamos-arm/pocketevo-build.json').read_text())['source_commit']
     subprocess.run(['git','-C',str(REPO),'cat-file','-e',base+'^{commit}'],check=True)
     records = {}
+    retired = []
+    # Explicit historical EVO relocations, also handled by the LED installer.
+    relocations = {
+        'sm8650-overlay/usr/lib/konkr/pocket_evo_led.py': 'sm8550-overlay/usr/lib/pocketevo/pocket_evo_led.py',
+        'sm8650-overlay/usr/lib/systemd/system/pocket-evo-led.service': 'sm8550-overlay/usr/lib/systemd/system/pocket-evo-led.service',
+        'sm8650-overlay/usr/lib/systemd/system/pocket-evo-led-sleep.service': 'sm8550-overlay/usr/lib/systemd/system/pocket-evo-led-sleep.service',
+    }
     def copy(src, dest):
         dest.parent.mkdir(parents=True, exist_ok=True)
         # Replace leaf symlinks instead of following absolute target-root links.
@@ -48,7 +55,14 @@ def main(root, home, manifest):
             src = REPO/name
             rel = Path(name).relative_to(overlay)
             if not src.exists() and not src.is_symlink():
-                raise RuntimeError('Explicit deletion review required: '+name)
+                replacement=relocations.get(name)
+                if not replacement or not (REPO/replacement).is_file():
+                    raise RuntimeError('Explicit deletion review required: '+name)
+                target=Path(replacement).relative_to('sm8550-overlay')
+                if target != rel:
+                    (root/rel).unlink(missing_ok=True)
+                    retired.append(str(rel))
+                continue
             copy(src, root/rel)
             if rel.parts[0] == 'etc':
                 upper = root/'var/lib/overlays/etc/upper'
@@ -92,7 +106,7 @@ def main(root, home, manifest):
         records[str(policy.relative_to(root))]={'generated_by':'scripts/configure-upower.py','sha256':sha(policy)}
     for f in ('usr/lib/qt6/plugins/discover/packagekit-backend.so','usr/lib/qt6/plugins/discover-notifier/DiscoverPackageKitNotifier.so'):
         (root/f).unlink(missing_ok=True)
-    manifest.write_text(json.dumps({'baseline_source':base,'source_commit':subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip(),'files':records},indent=2)+'\n')
+    manifest.write_text(json.dumps({'baseline_source':base,'source_commit':subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip(),'files':records,'retired_paths':retired},indent=2)+'\n')
     print(f'Staged and compared {len(records)} runtime paths')
 
 if __name__ == '__main__': main(*(Path(p).resolve() for p in sys.argv[1:]))

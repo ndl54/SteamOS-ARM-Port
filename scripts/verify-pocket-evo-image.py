@@ -110,6 +110,8 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
 
     embedded = json.loads((boot/'pocketevo-build.json').read_text())
     assert embedded == json.loads((root/'usr/lib/steamos-arm/pocketevo-build.json').read_text())
+    for rel in embedded['runtime_staging']['retired_paths']:
+        assert not (root/rel).exists() and not (root/rel).is_symlink(), rel
     for rel, item in embedded['runtime_staging']['files'].items():
         actual = home/rel[5:] if rel.startswith('HOME/') else root/rel
         if 'symlink' in item:
