@@ -7,6 +7,7 @@ namespace gamescope
 
 	// 0..1 inclusive. Writes the hardware backlight when we can.
 	// Returns true if the hardware (or a software fallback) accepted the change.
+	// Nonfinite values are rejected without changing the requested level.
 	bool SetBacklightNormalized( float flNorm );
 
 	float GetBacklightNormalized();
@@ -18,8 +19,8 @@ namespace gamescope
 
 	// Steam Game Mode writes a CARDINAL bit-cast float:
 	//   0..1   = normalized
-	//   1..100 = percent
-	//   >100   = nits
+	//   >1     = nits (not percent)
+	// Nonfinite values return false so callers also skip color updates.
 	bool ApplySteamBrightnessValue( float flVal );
 
 	// Keyboard / hotkey steps. Returns true if the level changed.

@@ -218,8 +218,8 @@ namespace gamescope
 	// have no known top: mapping to a fixed 500 nits left Steam's 100 % short of
 	// full brightness (Legion Y700 Gen 4 testers), and the old 1-100 "percent"
 	// branch read low nits values as percentages (too bright, then a jump).
-	// So the top is learned: the highest value Steam has sent, kept across
-	// sessions, since its slider at 100 % sends exactly that.
+	// Learn a top from Steam's values and retain it across sessions. The
+	// growth guard below rejects large jumps; this is not panel calibration.
 	static float s_flTopNits = 0.0f;
 
 	static std::string TopNitsFile()
@@ -227,9 +227,9 @@ namespace gamescope
 		const char *pszState = getenv( "XDG_STATE_HOME" );
 		const char *pszHome = getenv( "HOME" );
 		if ( pszState && *pszState )
-			return std::string( pszState ) + "/gamescope/backlight-top-nits";
+			return std::string( pszState ) + "/gamescope/backlight-top-nits-2";
 		if ( pszHome && *pszHome )
-			return std::string( pszHome ) + "/.local/state/gamescope/backlight-top-nits";
+			return std::string( pszHome ) + "/.local/state/gamescope/backlight-top-nits-2";
 		return {};
 	}
 
@@ -262,14 +262,15 @@ namespace gamescope
 
 	static float SteamValueToNormalized( float flVal )
 	{
-		if ( !std::isfinite( flVal ) )
-			return s_flLastNorm;
-
 		if ( flVal <= 1.0f )
 			return std::clamp( flVal, 0.0f, 1.0f );
 
 		LoadTopNits();
-		if ( flVal > s_flTopNits )
+		// One stray value (an external monitor's or an HDR range) must not
+		// become the top for good: then Steam's 100 % stayed dim on the panel
+		// (Legion Y700 Gen 4 tester). A new top is taken only within 1.5x of
+		// the old one; a bigger jump is treated as a one-off and capped at 100 %.
+		if ( s_flTopNits <= 1.0f || ( flVal > s_flTopNits && flVal <= s_flTopNits * 1.5f ) )
 		{
 			s_flTopNits = flVal;
 			SaveTopNits();
@@ -282,6 +283,9 @@ namespace gamescope
 
 	bool SetBacklightNormalized( float flNorm )
 	{
+		if ( !std::isfinite( flNorm ) )
+			return false;
+
 		flNorm = std::clamp( flNorm, 0.0f, 1.0f );
 
 		std::lock_guard<std::mutex> lock( s_Mutex );
@@ -325,6 +329,11 @@ namespace gamescope
 
 	bool ApplySteamBrightnessValue( float flVal )
 	{
+		// Returning success for an invalid value also lets the atom handler
+		// feed it into color management, even if the backlight did not change.
+		if ( !std::isfinite( flVal ) )
+			return false;
+
 		const float flNorm = SteamValueToNormalized( flVal );
 		return SetBacklightNormalized( flNorm );
 	}
