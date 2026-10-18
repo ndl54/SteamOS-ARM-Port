@@ -9,11 +9,32 @@ tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'l
 manifest=/usr/share/steamos-arm/tablets/${model}-firmware.json
 dest=/var/lib/steamos-arm/firmware/${model}
 [[ -f "$manifest" ]] || exit 0
+# Remember a fresh firmware destination across partial extraction/retries.
+# Existing installations do not acquire an unsolicited reboot on an update.
+pending="$dest/.first-boot-restart-pending"
+restarted="$dest/.first-boot-restarted"
+if [[ ! -e "$restarted" && ! -e "$pending" ]] && \
+   [[ ! -d "$dest" || -z "$(find "$dest" -type f -print -quit)" ]]; then
+  mkdir -p "$dest" && : >"$pending" || exit 1
+fi
 changed=$(mktemp) || exit 1
 trap 'rm -f "$changed"' EXIT
 /usr/lib/steamos-arm/tablet-firmware "$manifest" "$dest" --also /usr/lib/firmware \
   --changed-file "$changed" || exit 1
 # Replacing a stale fallback changes bytes without changing the file count.
+# A failed reboot request must be retryable even if the next extraction is unchanged.
+if [[ -e "$pending" && ! -e "$restarted" && -s "$dest/qcom/sm8750/adsp.mdt" && -s "$dest/qcom/sm8750/adsp_dtb.mdt" ]]; then
+  : >"$restarted" || exit 1
+  sync
+  echo "tablet-firmware: first audio firmware copied, requesting one reboot"
+  if systemctl --no-block reboot; then
+    rm -f "$pending"
+    exit 0
+  fi
+  rm -f "$restarted"
+  echo "tablet-firmware: reboot request failed; will retry next boot" >&2
+  exit 1
+fi
 [[ -s "$changed" ]] || exit 0
 # Remote processors that failed to start for want of firmware.
 for rp in /sys/class/remoteproc/remoteproc*; do

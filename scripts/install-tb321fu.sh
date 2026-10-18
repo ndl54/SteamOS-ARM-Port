@@ -104,9 +104,8 @@ done < <(sed -n 's/^[[:space:]]*\(Include\..*\.\)\{0,1\}File "\([^" ]*\)".*/\2/p
 # are part of every profile). Fragments sort within each directory, and /etc
 # loads after /usr/share regardless of name. The tablet's setup unit installs
 # this into /etc before the session starts; there 90 sorts after 53/54.
-# Match both card and node properties exactly. Prefer speakers with the
-# internal mic: the preferred-profile hook matches names without checking
-# jack availability, so a headphones-first list can select a silent output.
+# Match both card and node properties exactly. The dedicated user service
+# keeps speaker/internal-mic routing when the corresponding jack is absent.
 rm -f "$R/usr/share/wireplumber/wireplumber.conf.d/51-lenovo-tb321fu-alsa.conf" \
   "$R/usr/share/wireplumber/wireplumber.conf.d/90-lenovo-tb321fu-alsa.conf"
 install -Dm0644 /dev/stdin "$R/usr/share/steamos-arm/tb321fu/90-lenovo-tb321fu-alsa.conf" <<'CONF'
@@ -122,7 +121,7 @@ monitor.alsa.rules = [
       update-props = {
         api.acp.auto-profile = true
         api.acp.auto-port = true
-        device.profile = "HiFi (Mic1, Speaker)"
+        device.profile = "pro-audio"
         api.alsa.period-size = 1024
         api.alsa.period-num = 4
         api.alsa.headroom = 0
@@ -141,13 +140,133 @@ device.profile.priority.rules = [
     actions = {
       update-props = {
         priorities = [
-          "HiFi (Mic1, Speaker)"
-          "HiFi (Headset, Speaker)"
-          "HiFi (Headphones, Headset)"
-          "HiFi (Headphones, Mic1)"
-          "HiFi"
           "pro-audio"
         ]
+      }
+    }
+  }
+]
+CONF
+
+# The card's HiFi profiles never opened under PipeWire on test 6 (the sink
+# was auto_null, no sound or mic), while the same routes set with alsaucm and
+# played through pro-audio work (a tester's script, confirmed by others). So
+# play through pro-audio and let a user service set the routes: the speakers,
+# or the headphones while something is in the jack, plus the microphones.
+install -Dm0755 /dev/stdin "$R/usr/lib/steamos-arm/tb321fu-audio" <<'SH'
+#!/bin/bash
+# Lenovo Legion Y700 Gen 3 sound (steamos-arm-tb321fu-audio.service, per user).
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,tb321fu' || exit 0
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/steamos-arm/tb321fu-audio"
+pa() { timeout 8 pactl "$@"; }
+# Resolve the actual card index, including Lenovo-QRD-2.0, never a USB card.
+card() {
+  pa -f json list cards 2>/dev/null | python3 -c '
+import json, sys
+try:
+    cards = json.load(sys.stdin)
+    found = []
+    for c in cards:
+        p = c.get("properties", {})
+        if p.get("alsa.card_name", p.get("api.alsa.card.name")) not in ("Lenovo-Y700-TB321FU", "Lenovo-QRD-2.0"):
+            continue
+        n = str(p.get("alsa.card", ""))
+        name = c.get("name", "")
+        if n.isdecimal() and name.startswith("alsa_card."):
+            found.append((name, n))
+    if len(found) != 1:
+        sys.exit(1)
+    print(*found[0])
+except (ValueError, TypeError, KeyError):
+    sys.exit(1)
+'
+}
+sink() { pa list short sinks 2>/dev/null | awk -v p="${PA_CARD/alsa_card./alsa_output.}.pro-output-0" '$2 == p || index($2, p ".") == 1 {print $2; exit}'; }
+jack_state() {
+  local hp mic
+  hp=$(timeout 8 amixer -c "$CARD" cget "iface=CARD,name='Headphone Jack'" 2>/dev/null) || return 1
+  # A headphone without a microphone must keep the built-in mic.
+  mic=$(timeout 8 amixer -c "$CARD" cget "iface=CARD,name='Mic Jack'" 2>/dev/null) || return 1
+  if grep -q ': values=on' <<<"$hp"; then echo Headphones; else echo Speaker; fi
+  if grep -q ': values=on' <<<"$mic"; then echo Headset; else echo Mic1; fi
+}
+route() {
+  local playback capture
+  read -r playback capture <<<"${1//$'\n'/ }"
+  # A fresh alsaucm process does not remember which device the last one enabled.
+  # The local HiFi verb clears both output backends and speaker amp switches.
+  timeout 8 alsaucm -c "hw:$CARD" set _verb HiFi \
+    set _enadev "$playback" set _enadev "$capture" || return 1
+}
+start() {
+  local found s src
+  found=""
+  for _ in $(seq 30); do found=$(card) && break; sleep 1; done
+  [[ -n "$found" ]] || return 1
+  read -r PA_CARD CARD <<<"$found"
+  # Drop any old UCM-managed profile before establishing our own mixer routes.
+  pa set-card-profile "$PA_CARD" off || return 1
+  last=$(jack_state) || return 1
+  route "$last" || return 1
+  # Open pro-audio PCMs only after their mixer routes exist.
+  pa set-card-profile "$PA_CARD" pro-audio || return 1
+  for _ in $(seq 10); do [ -n "$(sink)" ] && break; sleep 0.5; done
+  s=$(sink); [ -n "$s" ] || return 1
+  pa set-default-sink "$s" || return 1
+  src=$(pa list short sources 2>/dev/null | awk -v p="${PA_CARD/alsa_card./alsa_input.}.pro-input-2" '$2 == p || index($2, p ".") == 1 {print $2; exit}')
+  [[ -n "$src" ]] && pa set-default-source "$src" || return 1
+  # Mark only after both defaults succeed; later starts preserve user volume.
+  if [ ! -e "$STATE" ]; then
+    pa set-sink-volume "$s" 40% && pa set-sink-mute "$s" 0 || return 1
+    mkdir -p "${STATE%/*}" && : >"$STATE" || return 1
+  fi
+}
+start || exit 1
+while sleep 1; do
+  # Profile disappearance/restart: rebuild routes, including current jack state.
+  if [ -z "$(sink)" ]; then start || exit 1; fi
+  now=$(jack_state) || exit 1
+  if [ "$now" != "$last" ]; then route "$now" || exit 1; last="$now"; fi
+done
+SH
+install -Dm0644 /dev/stdin "$R/usr/lib/systemd/user/steamos-arm-tb321fu-audio.service" <<'UNIT'
+[Unit]
+Description=Lenovo Legion Y700 Gen 3: speaker, headphone and microphone routes
+ConditionFirmware=device-tree-compatible(lenovo,tb321fu)
+After=wireplumber.service pipewire-pulse.service
+Wants=wireplumber.service pipewire-pulse.service
+
+[Service]
+ExecStart=/usr/lib/steamos-arm/tb321fu-audio
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+UNIT
+mkdir -p "$R/usr/lib/systemd/user/default.target.wants"
+ln -sfn ../steamos-arm-tb321fu-audio.service "$R/usr/lib/systemd/user/default.target.wants/steamos-arm-tb321fu-audio.service"
+# Quiet settings were inaudible (25 % on test 5): +6 dB into x42's peak
+# limiter on the card's output. Speakers and headphones share it, hence less
+# than the Pocket FIT's +8.
+install -Dm0644 /dev/stdin "$R/usr/share/wireplumber/wireplumber.conf.d/91-lenovo-tb321fu-speaker.conf" <<'CONF'
+# Lenovo Legion Y700 Gen 3 output: +6 dB into a peak limiter (install-tb321fu.sh).
+monitor.alsa.rules = [
+  {
+    matches = [
+      { node.name = "~alsa_output.*\\.pro-output-0(\\..*)?" alsa.card_name = "Lenovo-Y700-TB321FU" }
+      { node.name = "~alsa_output.*\\.pro-output-0(\\..*)?" alsa.card_name = "Lenovo-QRD-2.0" }
+    ]
+    actions = {
+      update-props = {
+        audioconvert.filter-graph.0 = {
+          nodes = [
+            { type = lv2 name = lim plugin = "http://gareus.org/oss/lv2/dpl#stereo"
+              control = { "gain" = 6.0 "threshold" = -1.0 "release" = 0.01 "truepeak" = 1 } }
+          ]
+          inputs = [ "lim:inL" "lim:inR" ]
+          outputs = [ "lim:outL" "lim:outR" ]
+        }
       }
     }
   }
@@ -171,8 +290,11 @@ ENV
 # Rotate them in libinput (the matrix for DT rotation 90, "right-up").
 install -Dm0644 /dev/stdin "$R/usr/lib/udev/rules.d/90-steamos-arm-tb321fu-touch.rules" <<'RULES'
 # Lenovo Legion Y700 Gen 3: the touch panel reports portrait coordinates, the session runs landscape.
-ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="NVTCapacitiveTouchScreen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
-ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="NVTCapacitivePen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", ATTRS{name}=="NVTCapacitiveTouchScreen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", ATTRS{name}=="NVTCapacitivePen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+# Screen flipped 180 degrees (Handheld Control, /etc/steamos-arm/flip-screen): the other landscape.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", ATTRS{name}=="NVTCapacitiveTouchScreen", TEST=="/run/steamos-arm/flip-screen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 -1 1 1 0 0"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", PROGRAM="/usr/bin/grep -azqx lenovo,tb321fu /sys/firmware/devicetree/base/compatible", ATTRS{name}=="NVTCapacitivePen", TEST=="/run/steamos-arm/flip-screen", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 -1 1 1 0 0"
 RULES
 # KWin already maps touch to the rotated output, so Desktop Mode replaces
 # the udev calibration with identity before applying its own output rotation.
@@ -277,6 +399,7 @@ Before=sysinit.target display-manager.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/install -Dm0644 /usr/share/steamos-arm/tb321fu/52-tb321fu.conf /etc/wireplumber/wireplumber.conf.d/52-tb321fu.conf
+ExecStart=/usr/lib/steamos-arm/tablet-display-setup
 ExecStart=/usr/bin/install -Dm0644 /usr/share/steamos-arm/tb321fu/90-lenovo-tb321fu-alsa.conf /etc/wireplumber/wireplumber.conf.d/90-lenovo-tb321fu-alsa.conf
 
 [Install]
@@ -423,4 +546,12 @@ O="${HERE}/../steamos-overlay"
 install -Dm0755 "$O/usr/lib/steamos-arm/tablet-boot-ok" "$R/usr/lib/steamos-arm/tablet-boot-ok"
 install -Dm0644 "$O/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service" "$R/usr/lib/systemd/system/steamos-arm-tablet-boot-ok.service"
 ln -sfn ../steamos-arm-tablet-boot-ok.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tablet-boot-ok.service"
+# Snapshot the flip choice before the graphical session starts.
+install -Dm0755 "${HERE}/../steamos-overlay/usr/lib/steamos-arm/tablet-display-setup" "$R/usr/lib/steamos-arm/tablet-display-setup"
+# Charge to 100 % (the battery firmware keeps Android's battery-care limit).
+O="${HERE}/../steamos-overlay"
+install -Dm0755 "$O/usr/lib/steamos-arm/tablet-charge-full" "$R/usr/lib/steamos-arm/tablet-charge-full"
+install -Dm0644 "$O/usr/lib/systemd/system/steamos-arm-tablet-charge-full.service" "$R/usr/lib/systemd/system/steamos-arm-tablet-charge-full.service"
+ln -sfn ../steamos-arm-tablet-charge-full.service "$R/usr/lib/systemd/system/multi-user.target.wants/steamos-arm-tablet-charge-full.service"
+[[ -s "$R/usr/lib/lv2/dpl.lv2/manifest.ttl" && -s "$R/usr/lib/lv2/dpl.lv2/dpl.so" ]] || die "dpl.lv2 (the output limiter) missing from the rootfs"
 log "firmware and audio profile installed"

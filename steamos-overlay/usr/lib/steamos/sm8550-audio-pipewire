@@ -6,8 +6,8 @@
 set +e
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 
-# TB321FU's own UCM handles its AW882xx speakers and WCD939x capture.
-# The generic Odin policy would force pro-audio and undo that routing.
+# TB321FU's own service sets UCM routes around its pro-audio PCMs.
+# The generic Odin policy must not change that card's profile or mixers.
 if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,tb321fu'; then
   exit 0
 fi

@@ -15,7 +15,7 @@
 # reuses a prepared build tree from this pinned recipe and re-merges config.
 set -euo pipefail
 OUT="${1:?output dir}"; CPIO="$(readlink -f "${2:?initrd.cpio}")"
-SRC_COMMIT=1cfa907237d190c03db9392cd858de2208eb7892
+SRC_COMMIT=62076530bf1ff34295d671016658965e54e597f1
 SRC_URL="https://codeload.github.com/enij90/armada-tb321fu/tar.gz/${SRC_COMMIT}"
 W="${WORK:-/work/kernel-tb321fu-726}"
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -27,9 +27,15 @@ case "${FAST:-0}" in
   1) FAST=1 ;;
   *) die "FAST must be 0 or 1" ;;
 esac
+VBLANK_PATCH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../external-and-mods/kernel-sm8650/patches" && pwd)/0055-drm-msm-dpu-real-vblank-timestamps-on-command-mode-panels.patch"
+recipe="$SRC_COMMIT:steamos-tablet-v1:$(sha256sum "$VBLANK_PATCH" | awk '{print $1}')"
+stamp="$W/cache/steamos-tablet-recipe"
 if [[ $FAST == 1 ]]; then
+  [[ -f "$stamp" && "$(cat "$stamp")" == "$recipe" ]] || die "FAST=1 tree does not match this recipe; run with FAST=0 first"
   [[ -s "$W/cache/build/linux-7.2.6/.config" ]] || die "FAST=1 needs a prepared tree; run with FAST=0 first"
 fi
+# Invalidate before any preparation/build so a failed run cannot certify a tree.
+rm -f "$stamp"
 mkdir -p "$W/cache" "$W/out"
 rm -rf "$W/pkg" "$W/out"/*
 
@@ -40,8 +46,18 @@ tar -xzf "$tarball" -C "$W/pkg" --strip-components=3 --wildcards '*/packages/ker
 P="$W/pkg"
 [[ -f "$P/scripts/build-kernel.sh" && -f "$P/patches/series" ]] || die "kernel package not found in the source"
 
-# CSOT: the same board with the CSOT panel selected; BOE keeps the file as is.
 dts="$P/dts/sm8650-lenovo-tb321fu.dts"
+# The new pin has the TE counter path but lacks invalid-counter propagation.
+# Carry the reviewed shared055 repair into this separate package's series slot.
+cp "$VBLANK_PATCH" "$P/patches/0078-drm-msm-dpu-fix-vblank-timestamps-on-command-mode-panels.patch"
+# Volume keys the way Android has them: the series swaps them for a
+# controller grip, and in our landscape they came out reversed (test 6).
+grep -q 'linux,code = <KEY_VOLUMEDOWN>;' "$dts" && grep -q 'linux,code = <KEY_VOLUMEUP>;' "$dts" || die "volume keys not found"
+sed -i -e 's/linux,code = <KEY_VOLUMEDOWN>;/linux,code = <KEY_VOLUME_SWAP>;/' \
+       -e 's/linux,code = <KEY_VOLUMEUP>;/linux,code = <KEY_VOLUMEDOWN>;/' \
+       -e 's/linux,code = <KEY_VOLUME_SWAP>;/linux,code = <KEY_VOLUMEUP>;/' "$dts"
+awk '/key-volume-up/ {f=1} f && /linux,code/ {print; exit}' "$dts" | grep -q KEY_VOLUMEUP || die "volume keys not swapped back"
+# CSOT: the same board with the CSOT panel selected; BOE keeps the file as is.
 sed -e 's/kirby-nt36523-boe-dsc/kirby-nt36523-csot-dsc/g' \
     -e 's/kirby_nt36523_boe_dsc_vid/kirby_nt36523_csot_dsc_vid/' \
     -e 's/novatek_ts_boe_fw.bin/novatek_ts_csot_fw.bin/g' \
@@ -75,6 +91,8 @@ docker run --rm -v "$P:/src" -v "$W/out:/work/out" -v "$W/cache:/cache" -w /src 
       grep sed coreutils hostname gzip tar kmod >/dev/null
     WORK_DIR=/cache/build OUT_DIR=/work/out bash scripts/build-kernel.sh
   '
+
+printf '%s\n' "$recipe" > "$stamp"
 
 pkg=$(ls "$W"/out/*.tar.zst | head -1)
 [[ -s "$pkg" ]] || die "no kernel package built"

@@ -94,6 +94,11 @@ for ((i = ${#KOUTS[@]} - 1; i >= 0; i--)); do
     rsync -a --ignore-existing "$k/firmware/ath12k/" "$R/usr/lib/firmware/ath12k/"
   fi
 done
+# Both the FIT overlay and optional tablets require the limiter. Stage it
+# before a tablet installer validates its dependencies on a fresh rootfs.
+if [[ ! -s "$R/usr/lib/lv2/dpl.lv2/dpl.so" || ! -s "$R/usr/lib/lv2/dpl.lv2/manifest.ttl" ]]; then
+  "${SCRIPT_DIR}/build-dpl-lv2-in-rootfs.sh" "$R"
+fi
 # Lenovo Legion Y700 Gen 3: its firmware and audio profile, when its kernel is
 # one of this rootfs's (kernel-tb321fu).
 for k in "${KOUTS[@]}"; do
@@ -586,10 +591,6 @@ STEAMOS_WORK="$WORKDIR" "${SCRIPT_DIR}/install-kde-extras.sh" "$R"
 # steamos-manager device, dual-SoC audio setup.
 # ---------------------------------------------------------------------------
 log "== SM8650 overlay (KONKR Pocket FIT / AYANEO Pocket S2)"
-# Speaker limiter for wireplumber.conf.d/55-konkr-speaker.conf.
-if [[ ! -f "$R/usr/lib/lv2/dpl.lv2/dpl.so" ]]; then
-  "${SCRIPT_DIR}/build-dpl-lv2-in-rootfs.sh" "$R"
-fi
 cp -r --no-preserve=mode,ownership "$SM8650_OVL/." "$R/"
 chmod 0755 "$R/usr/lib/konkr/pocket-s2-controller"
 chmod 0644 "$R/usr/lib/liblsfg-vk-layer-arm64.so" "$R/usr/lib/liblsfg-vk-layer-arm64.so.README" \

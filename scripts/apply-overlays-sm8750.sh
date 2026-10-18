@@ -75,6 +75,10 @@ for k in "${EXTRA_KOUTS[@]}"; do
   cp -a "$k/config-$kr" "$k/dtbs" "$R/opt/steamos-sm8750/$kr/" 2>/dev/null || true
   if [[ "$kr" == *-elden-steamos ]]; then
     log "== Lenovo Legion Y700 Gen 4 (${kr})"
+    # Elden's new speaker graph needs the same limiter as the FIT overlay.
+    if [[ ! -s "$R/usr/lib/lv2/dpl.lv2/dpl.so" || ! -s "$R/usr/lib/lv2/dpl.lv2/manifest.ttl" ]]; then
+      "${SCRIPT_DIR}/build-dpl-lv2-in-rootfs.sh" "$R"
+    fi
     "${ROOT}/scripts/install-elden.sh" "$R" || die "elden install failed"
     install_file "$OVL/usr/lib/steamos-arm/tablet-firmware" "$R/usr/lib/steamos-arm/tablet-firmware" 0755
     install_file "$OVL/usr/lib/steamos-arm/tablet-firmware-boot" "$R/usr/lib/steamos-arm/tablet-firmware-boot" 0755
