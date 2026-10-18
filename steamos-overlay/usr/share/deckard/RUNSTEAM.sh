@@ -47,13 +47,59 @@ done
 # Force-off leaves .crash; Steam then opens -child-update-ui (the wheel)
 # and logs "Looks like steam didn't shutdown cleanly".
 rm -f "${STEAMROOT}/.crash" "${STEAMROOT}/steam.pid" 2>/dev/null || true
-printf '%s\n' \
-  'BootStrapperInhibitAll=enable' \
-  'BootStrapperForceSelfUpdate=disable' \
-  'BootStrapperInhibitClientChecksum=enable' \
-  'BootStrapperInhibitBootstrapperChecksum=enable' \
-  'BootStrapperInhibitUpdateOnLaunch=enable' \
-  >"${STEAMROOT}/steam.cfg" 2>/dev/null || true
+# Client self-updates are blocked by default (x86 CDN builds break the handheld).
+# Opt in with `touch ${STEAMROOT}/.allow-client-updates` (or
+# STEAM_ALLOW_CLIENT_UPDATES=1) to follow the selected client beta channel,
+# e.g. the arm64 build shared with the Steam Frame.
+ALLOW_CLIENT_UPDATES=0
+if [[ -e "${STEAMROOT}/.allow-client-updates" || "${STEAM_ALLOW_CLIENT_UPDATES:-0}" == "1" ]]; then
+  ALLOW_CLIENT_UPDATES=1
+fi
+# Preserve custom settings; migrate only the exact five shipped defaults.
+# Failure is fatal here: do not silently launch with a stale update policy.
+python3 - "${STEAMROOT}" "${STEAM_RT_ARM64}" "${ALLOW_CLIENT_UPDATES}" <<'STEAM_CFG'
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import tempfile
+
+root, runtime, allow = sys.argv[1:]
+defaults = [b'BootStrapperInhibitAll=enable',
+            b'BootStrapperForceSelfUpdate=disable',
+            b'BootStrapperInhibitClientChecksum=enable',
+            b'BootStrapperInhibitBootstrapperChecksum=enable',
+            b'BootStrapperInhibitUpdateOnLaunch=enable']
+for path in (Path(root) / 'steam.cfg', Path(root) / runtime / 'steam.cfg'):
+    if not path.parent.is_dir():
+        continue
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise SystemExit(f'RUNSTEAM: refusing non-regular config {path}')
+    original = path.read_bytes() if path.exists() else b''
+    lines = [line for line in original.splitlines(keepends=True)
+             if line.rstrip(b'\r\n') not in defaults]
+    if allow != '1':
+        # Explicit values (including custom bootstrap choices) are user-owned.
+        for default in defaults:
+            key = default.split(b'=', 1)[0]
+            if not any(re.match(rb'^\s*' + key + rb'\s*=', line, re.I) for line in lines):
+                if lines and not lines[-1].endswith(b'\n'):
+                    lines[-1] += b'\n'
+                lines.append(default + b'\n')
+    data = b''.join(lines)
+    if data == original:
+        continue
+    fd, tmp = tempfile.mkstemp(prefix='.steam.cfg.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as out:
+            out.write(data)
+            os.fchmod(out.fileno(), stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+STEAM_CFG
 # Version 0 / "no bootstrapper found" keeps Gamepad UI on the update spinner.
 if [[ ! -s "${STEAMROOT}/steam.inf" ]]; then
   ver=1788652215
@@ -178,6 +224,90 @@ if [[ -d "${STEAMROOT}/linuxarm64" && -d "${STEAMROOT}/steamrtarm64" ]]; then
   done
   unset _lib _src _dst
 fi
+# PyroWave is an optional x86-64 Remote Play route, independent of game FEX.
+# Only replace a real AArch64 client or our own wrapper, with an atomic backup
+# first. Client updates can publish a new native binary between launches.
+python3 - "${STEAMROOT}" "${STEAM_RT_ARM64}" <<'PYROWAVE_SETUP' || echo "RUNSTEAM: PyroWave setup failed; inspect streaming_client and its .arm64 backup" >&2
+import fcntl
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+import tempfile
+
+root = Path(sys.argv[1])
+client = root / sys.argv[2] / 'streaming_client'
+backup = client.with_name(client.name + '.arm64')
+x86 = root / 'steamrt64/streaming_client'
+marker = b'# PYROWAVE_BOX64_WRAPPER'
+
+def regular(path):
+    return path.is_file() and not path.is_symlink()
+
+def elf(path, machine):
+    if not regular(path) or not os.access(path, os.X_OK):
+        return False
+    with path.open('rb') as stream:
+        header = stream.read(20)
+    return (len(header) == 20 and header[:6] == b'\x7fELF\x02\x01'
+            and int.from_bytes(header[18:20], 'little') == machine)
+
+def owned(path):
+    if not regular(path):
+        return False
+    with path.open('rb') as stream:
+        return (stream.readline().rstrip() == b'#!/bin/sh'
+                and stream.readline().startswith(marker))
+
+def publish(path, data, mode):
+    if path.is_symlink() or (path.exists() and not regular(path)):
+        raise RuntimeError(f'refusing non-regular destination {path}')
+    fd, tmp = tempfile.mkstemp(prefix='.streaming-client.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as out:
+            out.write(data)
+            os.fchmod(out.fileno(), mode)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+wrapper = b'''#!/bin/sh
+# PYROWAVE_BOX64_WRAPPER (managed by RUNSTEAM.sh)
+S=$(CDPATH= cd -P -- "$(dirname -- "$0")" && cd -P .. && pwd -P) || exit 1
+native="$0.arm64"
+# A removed opt-in or disappearing prerequisite restores routing immediately.
+box=$(command -v box64) || box=
+if [ -z "$box" ] && [ -x /usr/local/bin/box64 ]; then box=/usr/local/bin/box64; fi
+if [ ! -e "$S/.pyrowave-box64" ] || [ -z "$box" ] || [ ! -x "$S/steamrt64/streaming_client" ]; then
+    exec "$native" "$@"
+fi
+mkdir -p "$S/logs" || exit 1
+# Native Steam/overlay preload libraries must not enter the x86 client loader.
+unset LD_PRELOAD
+export BOX64_EMULATED_LIBS="libSDL3_ttf.so.0${BOX64_EMULATED_LIBS:+:$BOX64_EMULATED_LIBS}"
+export BOX64_LD_LIBRARY_PATH="$S/steamrt64:$S/ubuntu12_64:$S/linux64${BOX64_LD_LIBRARY_PATH:+:$BOX64_LD_LIBRARY_PATH}"
+exec "$box" "$S/steamrt64/streaming_client" "$@" >"$S/logs/streaming_client_box64.log" 2>&1
+'''
+# Serialize cooperating launcher setup only; Steam's updater does not use this lock.
+with (root / '.pyrowave-setup.lock').open('a') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    enabled = ((root / '.pyrowave-box64').exists() and elf(x86, 62)
+               and (shutil.which('box64') or os.access('/usr/local/bin/box64', os.X_OK)))
+    if enabled:
+        if elf(client, 183):
+            publish(backup, client.read_bytes(), stat.S_IMODE(client.stat().st_mode))
+        elif not owned(client):
+            raise RuntimeError('native client missing or custom/unsupported streaming_client; left unchanged')
+        if not elf(backup, 183):
+            raise RuntimeError('no valid AArch64 backup; wrapper not changed')
+        publish(client, wrapper, 0o755)
+    elif owned(client):
+        if not elf(backup, 183):
+            raise RuntimeError('cannot restore wrapper without a valid AArch64 backup')
+        publish(client, backup.read_bytes(), stat.S_IMODE(backup.stat().st_mode))
+PYROWAVE_SETUP
 echo "RUNSTEAM: DISPLAY=${DISPLAY} GAMESCOPE_WAYLAND_DISPLAY=${GAMESCOPE_WAYLAND_DISPLAY} QT_QPA_PLATFORM=${QT_QPA_PLATFORM}"
 
 if [[ "$is_odin3" -eq 1 && -f /etc/sdl2/qcom-gamecontrollerdb.txt ]]; then
@@ -229,6 +359,13 @@ if [[ "${IS_SIDELOAD}" == "0" ]]; then
     -nobootstrapperupdate
     ${STEAM_EXTRA_ARGS:-}
   )
+  if [[ "${ALLOW_CLIENT_UPDATES}" == "1" ]]; then
+    _kept=()
+    for _a in "${STEAM_ARGS[@]}"; do
+      [[ "$_a" == -inhibitbootstrap || "$_a" == -nobootstrapperupdate ]] || _kept+=("$_a")
+    done
+    STEAM_ARGS=("${_kept[@]}")
+  fi
 else
   SIDELOADED_CMDLINE_ARGS_FILE="${HOME}/devkit-game/steamdeckard-argv.json"
   read -ra STEAM_ARGS <<< "$(jq -r '.[0]' "${SIDELOADED_CMDLINE_ARGS_FILE}")"
@@ -247,7 +384,7 @@ if [[ "${IS_SIDELOAD}" == "1" ]]; then
   fi
 fi
 
-cd ${STEAMROOT}
+cd "${STEAMROOT}"
 mkdir -p "${HOME}/.local/share/Steam/logs"
 # Steam refuses LD_PRELOAD (unsafe unsetenv) and aborts its own startup UI.
 unset LD_PRELOAD || true

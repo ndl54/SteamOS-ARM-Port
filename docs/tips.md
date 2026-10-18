@@ -32,3 +32,14 @@ Saved values are tied to the board and panel and restored at boot. A file from a
 ## SSH
 
 SSH is off by default. To turn it on, set a password (`passwd` in Konsole), then run `sudo systemctl enable --now sshd`. From your PC: `ssh steamos@<device-ip>`. Root login is off, use sudo. `sudo systemctl disable --now sshd` turns it off again.
+
+## Steam client beta and PyroWave (SM8550)
+
+Both are opt-in, by creating a file in `~/.local/share/Steam` and restarting Steam:
+
+- `touch ~/.local/share/Steam/.allow-client-updates` allows client updates and the beta channel selected in Steam. With the shipped settings, updates are blocked without this file. `STEAM_ALLOW_CLIENT_UPDATES=1` in the **Steam launcher's environment** also opts in; `0` does not override an existing marker. An unrelated terminal's environment is not automatically passed to the Steam service. Removing the file and unsetting that variable blocks future updates; it does not downgrade the client.
+- `touch ~/.local/share/Steam/.pyrowave-box64` requests the x86-64 streaming client from `steamrt64` under box64 for Remote Play. It requires that client, box64, and a valid native ARM64 client to back up. No beta client or libraries are downloaded by this switch. Select a compatible client beta separately if needed. Remove the file and restart Steam to restore native routing.
+
+RUNSTEAM preserves unrelated `steam.cfg` settings in the Steam root and selected ARM runtime directory, removing only the five exact shipped suppression defaults on update opt-in. Custom bootstrap values remain authoritative and may still prevent updates; review them if the opt-in has no effect. The original launcher/installer did not record ownership of those five lines, so identical manually entered values cannot be distinguished from shipped defaults.
+
+The PyroWave route keeps `streaming_client.arm64` as a recovery copy and refuses to overwrite an unknown custom launcher. Setup errors appear in the Steam service's output; the box64 stream log is `~/.local/share/Steam/logs/streaming_client_box64.log`. A running box64 client's failure is reported as its exit status, without automatically starting a second stream. The host and beta client's codec support determine whether PyroWave is negotiated; the UI toggle alone does not confirm it. Check for `Pyrowave Vulkan decoding` in the stream log. Codec decoding, performance and compatibility still require device validation.
