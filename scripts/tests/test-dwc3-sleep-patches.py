@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Non-compiling patch regression for queue 084.
+"""Non-compiling patch regression for queue 084/085.
 
 DWC3_SOURCE_ROOT must contain linux-{7.1.2,7.2,7.2.8}/drivers/usb/dwc3/
 dwc3-qcom.c from the corresponding gregkh/linux tags. No download, build,
@@ -20,6 +20,7 @@ TARGET = 'drivers/usb/dwc3/dwc3-qcom.c'
 BASE_SHA256 = 'cf8257168ad0e8e201a003e7d2e3344cdfa08b33eb6ae6451728bc497d2ce008'
 TABLET = 'external-and-mods/kernel-tb321fu/patches/0012-usb-typec-the-tb321fu-type-c-ports.patch'
 PARENT = '59768208ed2781209ff730af65e24de5e66a0843'
+REVIEW_084 = 'b1cc7b25f3788b2ddb7a787d4fa4fd0532f1509a'
 
 
 def dwc3_section(data):
@@ -71,20 +72,48 @@ class Dwc3PatchRegression(unittest.TestCase):
             with self.subTest(soc=soc, version=version):
                 self.apply(version, [self.patches[soc]])
 
-    def test_inherited_tablet_chain_applies_without_fuzz(self):
-        self.apply('7.2.8', [self.patches['sm8650'], (PATCH_ROOT / TABLET).read_bytes()])
+    def tablet_chain(self):
+        # Read only the declarative recipe, never the build entrypoint. Use the
+        # actual basename skips and port order rather than hardcoding 0057.
+        env = dict(os.environ)
+        env.pop('SM8650_RECIPE', None)
+        recipe = PATCH_ROOT / 'external-and-mods/kernel-tb321fu/soc.env'
+        version, skips, ports = subprocess.check_output(
+            ['bash', '-c', 'source "$1"; printf "%s\\n" "$KVER" "$PATCH_SKIP" "$PORT_DIRS"',
+             'bash', str(recipe)], env=env, text=True).splitlines()
+        selected = []
+        for port in ports.split():
+            for path in sorted((PATCH_ROOT / 'external-and-mods' / port / 'patches').glob('*.patch')):
+                data = path.read_bytes()
+                if path.name not in skips.split() and ('+++ b/' + TARGET + '\n').encode() in data:
+                    selected.append((path, data))
+        return version, selected
+
+    def test_selected_tablet_chain_applies_without_fuzz(self):
+        version, selected = self.tablet_chain()
+        self.assertEqual(version, '7.2.8')
+        self.assertEqual([str(p.relative_to(PATCH_ROOT)) for p, _ in selected], [TABLET])
+        self.apply(version, [data for _, data in selected])
+
+    def test_tablet_result_preserves_reviewed_084_driver(self):
+        shared = 'external-and-mods/kernel-sm8650/patches/' + next(
+            (REPO / 'external-and-mods/kernel-sm8650/patches').glob('*apply-a-role-change-from-sleep-after-resume.patch')).name
+        previous = [subprocess.check_output(['git', 'show', REVIEW_084 + ':' + path], cwd=REPO)
+                    for path in (shared, TABLET)]
+        version, selected = self.tablet_chain()
+        self.assertEqual(self.apply(version, previous), self.apply(version, [data for _, data in selected]))
 
     def test_tablet_hardware_sequences_unchanged(self):
         before = self.apply('7.2.8', [self.old_tablet])
-        after = self.apply('7.2.8', [self.patches['sm8650'], (PATCH_ROOT / TABLET).read_bytes()])
+        version, selected = self.tablet_chain()
+        after = self.apply(version, [data for _, data in selected])
         for name in ('dwc3_qcom_host_ss_powerup_quirk', 'dwc3_qcom_reinit_usb2_phys'):
             self.assertEqual(function(before, name), function(after, name))
-        # All added tablet C lines survive; this includes quirk predicates,
-        # PHY error recovery, property names, debug messages and probe hooks.
-        def additions(data):
-            return [line[1:] for line in dwc3_section(data).splitlines()
-                    if line.startswith('+') and not line.startswith('+++') and line[1:].strip()]
-        self.assertEqual(additions(self.old_tablet), additions((PATCH_ROOT / TABLET).read_bytes()))
+        # Quirk predicates, PHY error recovery, properties, debug messages and
+        # probe hooks survive the rebase; shared sleep lines are now local too.
+        for line in dwc3_section(self.old_tablet).splitlines():
+            if line.startswith('+') and not line.startswith('+++') and line[1:].strip():
+                self.assertIn(line[1:], after.splitlines())
 
     def test_other_tablet_drivers_preserved_byte_for_byte(self):
         marker = b'diff --git a/' + TARGET.encode()
