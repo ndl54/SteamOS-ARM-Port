@@ -35,6 +35,8 @@ values = {
     ('shell', 'getprop', 'ro.product.device'): 'baldur',
     ('shell', 'getprop', 'ro.build.display.id'): '18.0.12.104',
     ('shell', "su -c 'id'"): 'uid=0(root)',
+    ('shell', "su -c 'sh /data/adb/steamos-gen5/action.sh --no-reboot'"): '- boot image verified',
+    ('shell', "su -c 'reboot'"): '',
     ('shell', "su -c 'rmdir /data/adb/steamos-gen5/operation.lock'"): '',
     ('shell', "su -c 'sh /data/local/tmp/sg5-card.sh'"): '',
 }
@@ -232,6 +234,47 @@ class HostADB(unittest.TestCase):
             self.run_host(f'[[ $SWITCH == {expected} ]]', args=args)
         for args in (('--typo',), ('--switch', 'extra')):
             self.run_host(args=args, success=False)
+
+    def test_switch_preparation_failure_never_requests_reboot(self):
+        suffix = SOURCE[SOURCE.index('su_ "rmdir $D/operation.lock"; locked=0'):]
+        for name in ('adb', 'adb.exe'):
+            self.env['ADB'] = str(self.setup_adb(name))
+            self.env['FAIL'] = 'action.sh --no-reboot'
+            self.calls.unlink(missing_ok=True)
+            result = self.run_host(suffix, args=('--switch',), success=False)
+            self.assertIn(b'switch preparation failed', result.stderr)
+            self.assertFalse(any(x[-1] == "su -c 'reboot'" for x in self.log()))
+            self.assertNotIn(b'Reboot command returned', result.stdout)
+
+    def test_switch_reboot_transport_is_unconfirmed_not_write_failure(self):
+        suffix = SOURCE[SOURCE.index('su_ "rmdir $D/operation.lock"; locked=0'):]
+        for name in ('adb', 'adb.exe'):
+            self.env['ADB'] = str(self.setup_adb(name))
+            self.env['FAIL'] = "su -c 'reboot'"
+            result = self.run_host(suffix, args=('--switch',), success=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(b'Reboot request unconfirmed (ADB status 23)', result.stderr)
+            self.assertNotIn(b'ERROR: stopped', result.stderr)
+            self.assertNotIn(b'switch preparation failed', result.stderr)
+            self.assertNotIn(b'Done', result.stdout)
+
+    def test_switch_success_and_default_stage_only(self):
+        self.setup_adb()
+        suffix = SOURCE[SOURCE.index('su_ "rmdir $D/operation.lock"; locked=0'):]
+        result = self.run_host(suffix)
+        self.assertIn(b'Done: staged', result.stdout)
+        self.assertFalse(any('action.sh --no-reboot' in x[-1] for x in self.log()))
+        result = self.run_host(suffix, args=('-switch',))
+        self.assertIn(b'SteamOS boot is not verified', result.stdout)
+        self.assertEqual(self.log()[-2][-1], "su -c 'sh /data/adb/steamos-gen5/action.sh --no-reboot'")
+        self.assertEqual(self.log()[-1][-1], "su -c 'reboot'")
+
+    def test_lock_release_failure_cannot_reach_switch(self):
+        self.setup_adb()
+        self.env['FAIL'] = 'rmdir'
+        suffix = SOURCE[SOURCE.index('su_ "rmdir $D/operation.lock"; locked=0'):]
+        self.run_host(suffix, args=('--switch',), success=False)
+        self.assertFalse(any('action.sh' in x[-1] or x[-1] == "su -c 'reboot'" for x in self.log()))
 
     def test_archive_path_is_data_not_python_source(self):
         # Exercise only the actual archive expression with two tiny fixture files.

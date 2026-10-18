@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Lenovo Legion Y700 Gen 5: cap microSD at 100 MHz (the SDR50 rate).
+ * A tester reported SDR104 tuning failures followed by read errors/panic.
+ * This clock limit does not remove the host/card SDR104 capability: SDR104
+ * can still be negotiated at 100 MHz, where the pinned MSM driver skips
+ * its SDR104 DLL tuning. SDR50 with SDHCI_SDR50_NEEDS_TUNING is a separate
+ * driver path and is not guaranteed tuning-free by this frequency limit.
+ */
+&sdhc_2 {
+	max-frequency = <100000000>;
+};

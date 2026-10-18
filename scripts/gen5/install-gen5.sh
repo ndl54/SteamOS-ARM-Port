@@ -4,6 +4,7 @@
 #
 #   install-gen5.sh [--switch|-switch]
 # Optional: ADB=/path/to/adb[.exe], ANDROID_SERIAL=<tablet serial>.
+# Exit 2 after --switch means the boot write verified but reboot is unconfirmed.
 #
 # Before: the tablet rooted without unlocking (LTBox + KernelSU, ZUI
 # 18.0.12.104), adb with root allowed for the shell, and the microSD card
@@ -300,7 +301,24 @@ echo "staged. In Android: KernelSU > Modules > Switch to SteamOS > Action"
 
 su_ "rmdir $D/operation.lock"; locked=0
 if [[ $SWITCH == 1 ]]; then
-  say "6. Restarting into SteamOS"
-  adb shell "su -c 'sh $D/action.sh'" | tr -d '\r'
+  say "6. Preparing the switch to SteamOS"
+  # Never suppress an Action error: all target/backup/write/readback checks and
+  # lock cleanup must return successfully while the device is still connected.
+  su_ "sh $D/action.sh --no-reboot" || die "switch preparation failed; no reboot requested, inspect the tablet and backups"
+  say "Boot image verified; requesting reboot"
+  # A transport loss here cannot tell us whether reboot was accepted. Keep its
+  # output and report uncertainty, without labelling the verified write failed
+  # or treating any nonzero result (including permission errors) as success.
+  # Suppress inherited ERR diagnostics only for this separately handled request.
+  if (trap - ERR; command "$ADB" -s "$serial" shell "su -c 'reboot'") > "$W/reboot.log" 2>&1; then
+    tr -d '\r' < "$W/reboot.log"
+    say "Reboot command returned successfully; SteamOS boot is not verified"
+  else
+    reboot_status=$?
+    tr -d '\r' < "$W/reboot.log" >&2
+    printf '\nReboot request unconfirmed (ADB status %s). The tablet may be restarting. Check it before retrying; the boot image was verified.\n' "$reboot_status" >&2
+    exit 2
+  fi
+else
+  say "Done: staged for KernelSU Action"
 fi
-say "Done"

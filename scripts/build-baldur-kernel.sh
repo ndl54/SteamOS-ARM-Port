@@ -52,6 +52,8 @@ dq="$W/build/linux/arch/arm64/boot/dts/qcom"
 cp "$K/dts/baldur-gpu-no-skin-throttle.dtsi" "$dq/"
 grep -q '"baldur-skin-thermal.dtsi"' "$dq/kaanapali-lenovo-baldur-display.dts" || die "display dts without skin thermal"
 echo '#include "baldur-gpu-no-skin-throttle.dtsi"' >> "$dq/kaanapali-lenovo-baldur-display.dts"
+cp "$K/dts/baldur-sd-sdr50.dtsi" "$dq/"
+echo '#include "baldur-sd-sdr50.dtsi"' >> "$dq/kaanapali-lenovo-baldur-display.dts"
 cp "$CPIO" "$W/build/initrd.cpio"
 cat "$ROOT/external-and-mods/kernel-common/steamos.config" "$ROOT/external-and-mods/kernel-baldur/steamos.config" \
   > "$W/build/steamos.fragment"
@@ -83,6 +85,9 @@ docker run --rm -v "$W/build:/build" -w /build/linux \
     for m in map0 map1 map2 map3 map4 map5 map6 map7 map8 map9 map10; do
       fdtget -l $d /thermal-zones/quiet-thermal/cooling-maps | grep -qx $m || { echo "dtb: skin protection $m missing"; exit 1; }
     done
+    # Check the actual SD controller, not an unrelated 100 MHz property.
+    sd=/soc@0/mmc@8804000
+    sd_max=$(fdtget -t u "$d" "$sd" max-frequency) && [ "$sd_max" = 100000000 ] || { echo "dtb: SD card max-frequency not set"; exit 1; }
     $M -j"$(nproc)" Image modules
     rm -rf /build/mods; $M INSTALL_MOD_PATH=/build/mods INSTALL_MOD_STRIP=1 modules_install >/dev/null
     $M M=/build/port/kernel/out-of-tree/aw882xx CONFIG_SND_SOC_AW882XX=m modules

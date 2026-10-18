@@ -1,6 +1,14 @@
 #!/system/bin/sh
 # KernelSU Action and the installer use identical validation and one lock.
 set -eu
+# The PC needs a checked write/readback result before a separate reboot request.
+# KernelSU still invokes the no-argument action, which requests reboot below.
+reboot_after=1
+case "$#:${1:-}" in
+  0:) ;;
+  1:--no-reboot) reboot_after=0 ;;
+  *) echo 'usage: action.sh [--no-reboot]' >&2; exit 1 ;;
+esac
 D=/data/adb/steamos-gen5
 M=${0%/*}
 . "$M/storage.sh"
@@ -25,5 +33,8 @@ dd if="$D/linux.img" of="$a" bs=4096 conv=fsync || fail "write failed; do not re
 blockdev --flushbufs "$a" || fail "flush failed; do not reboot"
 [ "$(hash "$a")" = "$want_linux" ] || fail "readback failed; do not reboot, inspect backup"
 sync
-echo '- verified, restarting into SteamOS'
-reboot
+echo '- boot image verified'
+if [ "$reboot_after" = 1 ]; then
+  echo '- requesting reboot; boot completion is not verified'
+  reboot
+fi
