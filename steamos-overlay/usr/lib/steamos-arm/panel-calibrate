@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Calibrate the active 60 / 120 Hz mode on an RP6 or Odin 3.
+
+Run with sudo in Desktop Mode; keep the built-in display awake and do not
+change its mode during calibration. Repeat for the other rate. `apply`
+restores saved values at boot; `show` prints current and saved values.
+"""
+import ctypes
+import fcntl
+import glob
+import json
+import os
+import signal
+import struct
+import sys
+import tempfile
+import time
+from contextlib import contextmanager
+from pathlib import Path
+
+SAVED = "/etc/steamos-arm/panel-calibration.json"
+LOCK = "/run/steamos-arm-panel-calibration.lock"
+# Exact board + panel pairs, with the bounds enforced by their drivers.
+PANELS = {
+    "retroidpocket,rp6": ("vtdr6130,rp6", {60: (0x76C, 0x834), 120: (0x10, 0x80)}),
+    "ayn,odin3": ("chipone,icna3520", {60: (0x770, 0x838), 120: (0x10, 0x80)}),
+}
+
+
+def compatible(path):
+    try:
+        return Path(path).read_bytes().decode("ascii").rstrip("\0").split("\0")
+    except FileNotFoundError:
+        return []
+
+
+def board():
+    matches = set(compatible("/sys/firmware/devicetree/base/compatible")) & PANELS.keys()
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def panel(identity):
+    expected, _ = PANELS[identity]
+    found = []
+    for attr in glob.glob("/sys/bus/mipi-dsi/devices/*/frame_len_60"):
+        dev = os.path.dirname(attr)
+        if (expected in compatible(f"{dev}/of_node/compatible")
+                and os.path.exists(f"{dev}/frame_len_120")):
+            found.append(dev)
+    if len(found) > 1:
+        raise OSError("ambiguous panel; refusing to write")
+    return found[0] if found else None
+
+
+def load(identity):
+    try:
+        with open(SAVED, encoding="utf-8") as fh:
+            record = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    expected, limits = PANELS[identity]
+    if (not isinstance(record, dict) or record.get("board") != identity
+            or record.get("panel") != expected or not isinstance(record.get("values"), dict)):
+        raise ValueError(f"{SAVED}: wrong board/panel or invalid format; move it aside and recalibrate")
+    values = record["values"]
+    allowed = {f"frame_len_{rate}": bound for rate, bound in limits.items()}
+    for key, value in values.items():
+        if key not in allowed or type(value) is not int or not allowed[key][0] <= value <= allowed[key][1]:
+            raise ValueError(f"{SAVED}: invalid calibration {key!r}")
+    return values
+
+
+def save(identity, values):
+    directory = os.path.dirname(SAVED)
+    os.makedirs(directory, exist_ok=True)
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, delete=False) as fh:
+            path = fh.name
+            json.dump({"board": identity, "panel": PANELS[identity][0], "values": values}, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(path, SAVED)
+    finally:
+        if path and os.path.exists(path):
+            os.unlink(path)
+
+
+def read_attr(path):
+    return int(Path(path).read_text(encoding="ascii"))
+
+
+def write_attr(path, value):
+    Path(path).write_text(str(value), encoding="ascii")
+
+
+@contextmanager
+def writer():
+    if os.geteuid() != 0:
+        raise OSError("run it as root (sudo)")
+    with open(LOCK, "a", encoding="ascii") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise OSError("another calibration/apply is running") from None
+        yield
+
+
+def ioctl(fd, number, buf):
+    # Linux arm64 DRM_IOWR: UAPI structures below use fixed-width fields.
+    fcntl.ioctl(fd, 0xC0006400 | (len(buf) << 16) | number, buf)
+    return buf
+
+
+def route(fd, connector):
+    # count_modes=1 avoids a forced connector probe if this fd is DRM master.
+    mode = ctypes.create_string_buffer(68)
+    buf = bytearray(struct.pack("=4Q12I", 0, ctypes.addressof(mode), 0, 0,
+                                1, 0, 0, 0, connector, 0, 0, 0, 0, 0, 0, 0))
+    conn = struct.unpack("=4Q12I", ioctl(fd, 0xA7, buf))
+    if conn[9] != 16 or conn[11] != 1 or not conn[7]:
+        raise OSError("the built-in DSI display is not active")
+    enc = struct.unpack("=5I", ioctl(fd, 0xA6, bytearray(struct.pack("=5I", conn[7], 0, 0, 0, 0))))
+    crtc = enc[2]
+    if not crtc:
+        raise OSError("the built-in DSI display has no CRTC")
+    buf = bytearray(104)  # drm_mode_crtc: 36-byte prefix + 68-byte modeinfo
+    struct.pack_into("=I", buf, 12, crtc)
+    ioctl(fd, 0xA1, buf)
+    if not struct.unpack_from("=I", buf, 32)[0]:
+        raise OSError("the built-in DSI display has no active mode")
+    return crtc, bytes(buf[36:])
+
+
+def display():
+    # These supported boards have one DSI panel. Never guess from a working
+    # vblank on pipe 0: it may belong to an external display.
+    connectors = glob.glob("/sys/class/drm/card*-DSI-*")
+    if len(connectors) != 1:
+        raise OSError("expected exactly one built-in DSI connector")
+    connector = read_attr(f"{connectors[0]}/connector_id")
+    card = os.path.basename(connectors[0]).split("-", 1)[0]
+    fd = os.open(f"/dev/dri/{card}", os.O_RDWR | os.O_CLOEXEC)
+    try:
+        crtc, mode = route(fd, connector)
+        res = struct.unpack("=4Q8I", ioctl(fd, 0xA0, bytearray(64)))
+        count = res[5]
+        if not 1 <= count <= 32:
+            raise OSError("unsupported CRTC count")
+        crtcs = (ctypes.c_uint32 * count)()
+        buf = bytearray(64)
+        struct.pack_into("=Q", buf, 8, ctypes.addressof(crtcs))
+        struct.pack_into("=I", buf, 36, count)
+        result = struct.unpack("=4Q8I", ioctl(fd, 0xA0, buf))
+        if result[5] != count or crtc not in crtcs:
+            raise OSError("display resources changed; retry calibration")
+        pipe = list(crtcs).index(crtc)
+        # vrefresh is the nominal mode rate, not the measured panel rate.
+        target = struct.unpack_from("=I", mode, 24)[0]
+        if target not in (60, 120):
+            raise OSError("set the built-in display to 60 or 120 Hz first")
+        return fd, pipe, connector, (crtc, mode), target
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def wait_vblank(fd, pipe):
+    buf = bytearray(struct.pack("=IIqq", 0x1 | (pipe << 1), 1, 0, 0))
+    _, sequence, sec, usec = struct.unpack("=IIqq", ioctl(fd, 0x3A, buf))
+    if sec < 0 or not 0 <= usec < 1000000:
+        raise OSError("invalid vblank timestamp")
+    return sequence, sec * 1000000 + usec
+
+
+def measure(fd, pipe, seconds=1.0):
+    previous_seq, first_time = wait_vblank(fd, pipe)
+    previous_time = first_time
+    end = time.monotonic() + seconds
+    frames = 0
+    while time.monotonic() < end or not frames:
+        sequence, stamp = wait_vblank(fd, pipe)
+        delta = (sequence - previous_seq) & 0xFFFFFFFF
+        if not 0 < delta < 10000 or stamp <= previous_time:
+            raise OSError("vblank sequence/timestamp did not advance normally")
+        frames += delta
+        previous_seq, previous_time = sequence, stamp
+    # Count kernel sequences, not ioctl calls: the process can miss frames.
+    return frames * 1000000 / (previous_time - first_time)
+
+
+def calibrate():
+    identity = board()
+    dev = panel(identity) if identity else None
+    if not dev:
+        raise OSError("this board/panel cannot be calibrated")
+    values = load(identity)  # Validate before any panel write.
+    fd, pipe, connector, original, target = display()
+    attr = f"{dev}/frame_len_{target}"
+    changed = False
+    try:
+        start = read_attr(attr)
+        low, high = PANELS[identity][1][target]
+        if not low <= start <= high:
+            raise OSError("current frame length is outside driver bounds")
+
+        def sample(seconds=1.0):
+            if route(fd, connector) != original:
+                raise OSError("display mode changed during calibration")
+            hz = measure(fd, pipe, seconds)
+            if route(fd, connector) != original:
+                raise OSError("display mode changed during calibration")
+            if abs(hz - target) > 5:
+                raise OSError(f"unexpected rate {hz:.3f} Hz for {target} Hz mode")
+            return hz
+
+        hz = sample()
+        tolerance = 0.05 if target == 60 else 0.2
+        value = start
+        print(f"{target} Hz mode: measures {hz:.3f} Hz, frame length {start}")
+        # Longer frames lower the rate. Search integer values inside the
+        # driver's bounds; fixed steps of four can skip every usable value.
+        for _ in range(10):
+            delta = hz - target
+            if 0 <= delta <= tolerance:
+                break
+            if delta > tolerance:
+                low = value + 1
+            else:
+                high = value - 1
+            if low > high:
+                raise OSError("no frame length within the requested tolerance")
+            value = (low + high) // 2
+            changed = True  # A failed DSI write can still update driver cache.
+            write_attr(attr, value)
+            time.sleep(0.5)
+            hz = sample()
+        else:
+            raise OSError("no stable frame length")
+        hz = sample(3.0)
+        if not 0 <= hz - target <= tolerance:
+            raise OSError(f"unstable at {hz:.3f} Hz")
+        values[f"frame_len_{target}"] = value
+        save(identity, values)
+    except BaseException:
+        if changed:
+            try:
+                write_attr(attr, start)
+                print(f"panel-calibrate: restored frame length {start}", file=sys.stderr)
+            except OSError as exc:
+                print(f"panel-calibrate: restore FAILED: {exc}; panel state is uncertain", file=sys.stderr)
+        raise
+    finally:
+        os.close(fd)
+    print(f"{target} Hz mode: now {hz:.3f} Hz, frame length {value} (saved)")
+
+
+def apply():
+    identity = board()
+    if not identity:
+        return  # Shared overlay: EVO/other boards must remain untouched.
+    values = load(identity)
+    if not values:
+        return
+    # modules-load ordering does not guarantee completion of deferred probe.
+    deadline = time.monotonic() + 10
+    while not (dev := panel(identity)):
+        if time.monotonic() >= deadline:
+            raise OSError("supported panel did not appear; saved calibration was not applied")
+        time.sleep(0.2)
+    errors = []
+    for key, value in values.items():
+        try:
+            write_attr(f"{dev}/{key}", value)
+        except OSError as exc:
+            errors.append(f"{key}={value}: {exc}")
+    if errors:
+        raise OSError("; ".join(errors))
+
+
+def show():
+    identity = board()
+    dev = panel(identity) if identity else None
+    if not dev:
+        raise OSError("this board/panel cannot be calibrated")
+    for rate in (60, 120):
+        print(f"frame_len_{rate}: {read_attr(f'{dev}/frame_len_{rate}')}")
+    print(f"saved: {load(identity) or 'nothing'}")
+
+
+def interrupted(signum, frame):
+    raise InterruptedError(f"interrupted by signal {signum}")
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) == 2 else "run" if len(sys.argv) == 1 else None
+    if cmd not in ("run", "apply", "show"):
+        sys.exit(__doc__)
+    try:
+        if cmd == "show":
+            show()
+        else:
+            signal.signal(signal.SIGTERM, interrupted)
+            signal.signal(signal.SIGHUP, interrupted)
+            with writer():
+                {"run": calibrate, "apply": apply}[cmd]()
+    except (OSError, ValueError, KeyboardInterrupt) as exc:
+        sys.exit(f"panel-calibrate: {exc or 'interrupted'}")
+
+
+if __name__ == "__main__":
+    main()
