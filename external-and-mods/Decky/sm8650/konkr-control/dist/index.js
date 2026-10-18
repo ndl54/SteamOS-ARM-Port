@@ -355,13 +355,13 @@ function Content() {
         jsxs(DFL.PanelSection, { title: "Display", children: [
             st.has_dualboot ? row(jsx(DFL.ButtonItem, {
                 layout: "below",
-                description: "SteamOS runs from the microSD card. This restarts into ZUXOS; to come back, run fastboot set_active b",
+                description: st.dualboot_text,
                 onClick: async () => {
                     try {
                         if (await bootAndroid()) return;
                     } catch (e) {}
                     toaster.toast({ title: "Restart into ZUXOS failed",
-                        body: "Check the system log before trying again. The next boot slot may already have changed." });
+                        body: "Check the system log before trying again. Boot storage may already have changed." });
                 },
                 children: "Restart into ZUXOS",
             })) : null,

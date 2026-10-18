@@ -25,6 +25,16 @@ BLACKLIST = "/etc/modprobe.d/konkr-mcu.conf"
 FLIP = "/etc/steamos-arm/flip-screen"
 
 
+def gen5() -> bool:
+    """Lenovo Legion Y700 Gen 5 (its bootloader can't be unlocked: Android and
+    SteamOS take turns in boot_a)."""
+    try:
+        with open("/sys/firmware/devicetree/base/compatible", "rb") as fh:
+            return "lenovo,baldur" in fh.read().decode(errors="replace").split("\0")
+    except OSError:
+        return False
+
+
 def tablet() -> bool:
     """Lenovo Legion Y700 Gen 3 / Gen 4."""
     try:
@@ -32,13 +42,14 @@ def tablet() -> bool:
             compat = fh.read().decode(errors="replace").split("\0")
     except OSError:
         return False
-    return "lenovo,tb321fu" in compat or "lenovo,elden" in compat
+    return any(c in compat for c in ("lenovo,tb321fu", "lenovo,elden", "lenovo,baldur"))
 
 
 def dualboot() -> bool:
     # Share the exact board/device/slot checks with the mutating helper.
     try:
-        return subprocess.run(["/usr/lib/steamos-arm/tablet-slot", "check"],
+        tool = ["/usr/lib/steamos-arm/gen5-android", "--check"] if gen5() else ["/usr/lib/steamos-arm/tablet-slot", "check"]
+        return subprocess.run(tool,
                               capture_output=True, timeout=8).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -222,6 +233,8 @@ class Plugin:
             "has_flip": tablet(),
             "flip": os.path.exists(FLIP),
             "has_dualboot": await asyncio.to_thread(dualboot),
+            "dualboot_text": ("SteamOS runs from the microSD card. This restarts into ZUXOS; to come back, "
+                              + ("use Switch to SteamOS in KernelSU" if gen5() else "run fastboot set_active b")),
             "has_motors": any("HID_ID=0003:00004001:00000428" in rd(f"{d}/device/uevent")
                               for d in glob.glob("/sys/class/hidraw/hidraw*")),
             "buttons": st["buttons"],
@@ -348,8 +361,8 @@ class Plugin:
         if not await asyncio.to_thread(dualboot):
             return False
         try:
-            r = await asyncio.to_thread(subprocess.run,
-                                       ["/usr/lib/steamos-arm/tablet-slot", "android"])
+            tool = ["/usr/lib/steamos-arm/gen5-android"] if gen5() else ["/usr/lib/steamos-arm/tablet-slot", "android"]
+            r = await asyncio.to_thread(subprocess.run, tool)
             return r.returncode == 0
         except OSError:
             return False

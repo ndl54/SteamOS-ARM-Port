@@ -1,0 +1,15 @@
+[Unit]
+Description=Grow the root partition on a Lenovo Baldur two-partition SD card
+ConditionFirmware=device-tree-compatible(lenovo,baldur)
+DefaultDependencies=no
+Requires=steamos-arm-gen5-firstboot.service
+After=systemd-remount-fs.service steamos-arm-gen5-firstboot.service
+Before=systemd-udev-trigger.service swap.target sysinit.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=6min
+ExecStart=/usr/lib/steamos-arm/gen5-storage grow
+
+[Install]
+WantedBy=sysinit.target

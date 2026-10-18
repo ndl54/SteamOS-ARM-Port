@@ -3,7 +3,7 @@
 # (Lenovo's battery care, 70-80 %) and puts it back some time after boot, so
 # the tablet never charged to full. Set the thresholds to 95-100 % until they
 # hold. Runs before UPower, so a limit set in Desktop Mode still applies.
-tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qxE 'lenovo,(tb321fu|elden)' || exit 0
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qxE 'lenovo,(tb321fu|elden|baldur)' || exit 0
 bat=""
 for d in /sys/class/power_supply/*; do
   [[ "$(cat "$d/type" 2>/dev/null)" == Battery && "$(cat "$d/scope" 2>/dev/null || echo System)" != Device \

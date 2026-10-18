@@ -114,8 +114,30 @@ usb_image_boot() {
   return 1
 }
 
+# Baldur uses a two-partition SD. Never accept a USB/UFS label collision.
+gen5=0
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,baldur' && gen5=1
+gen5_card() {
+  nr=0; nb=0; gr=""; gb=""
+  for u in /sys/class/block/*/uevent; do
+    if grep -qx 'PARTNAME=steamos-gen5' "$u"; then nr=$((nr + 1)); gr=${u%/uevent}; fi
+    if grep -qx 'PARTNAME=steamos-gen5-logs' "$u"; then nb=$((nb + 1)); gb=${u%/uevent}; fi
+  done
+  [ "$nr" = 1 ] && [ "$nb" = 1 ] || return 1
+  gp=$(dirname "$(readlink -f "$gr")")
+  [ "$gp" = "$(dirname "$(readlink -f "$gb")")" ] &&
+    [ "$(cat "$gp/device/type" 2>/dev/null)" = SD ] &&
+    [ "$(cat "$gr/partition")" = 2 ] && [ "$(cat "$gb/partition")" = 1 ] || return 1
+  [ -b "/dev/${gr##*/}" ] && [ -b "/dev/${gb##*/}" ] || return 1
+  rootdev="/dev/${gr##*/}"; bootdev="/dev/${gb##*/}"
+}
 bootdev=""
 rootdev=""
+if [ "$gen5" = 1 ]; then
+  if [ "$rootarg" = PARTLABEL=steamos-gen5 ]; then
+    for i in $(seq 1 60); do gen5_card && break; sleep 0.5; done
+  fi
+else
 case "$rootarg" in
   PARTLABEL=*)
     # UFS comes up a few seconds into boot. steamos.usbimage=1 (the tablets,
@@ -155,6 +177,7 @@ case "$rootarg" in
     [ -n "$bootdev" ] && rootdev="${bootdev%p1}p2"
     ;;
 esac
+fi
 
 logdir=""
 snap() {
@@ -255,7 +278,7 @@ if [ -n "$rootdev" ] && mount -t ext4 -o rw "$rootdev" /newroot; then
       /newroot/usr/lib/systemd/system/steamos-arm-bootdebug.service
   fi
   snap "root mounted from $rootdev, switch_root"
-  if [ "$debug" = 1 ] && mountpoint -q /boot; then
+  if [ "$debug" = 1 ] && [ "$gen5" != 1 ] && mountpoint -q /boot; then
     # Live log: keeps copying the kernel log to BOOT every 2 s for 5 minutes
     # after the handover, so a hang or a system that never starts bootdebug
     # still leaves one. It keeps this initramfs as its root (and /boot with

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Keep display and touch on one boot-time choice; Decky only changes next boot.
 set -euo pipefail
-tr '\0' '\n' </sys/firmware/devicetree/base/compatible | grep -qxE 'lenovo,(tb321fu|elden)' || exit 0
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible | grep -qxE 'lenovo,(tb321fu|elden|baldur)' || exit 0
 mkdir -p /run/steamos-arm
 if [[ -e /etc/steamos-arm/flip-screen ]]; then
   : >/run/steamos-arm/flip-screen

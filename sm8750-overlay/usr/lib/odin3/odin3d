@@ -52,7 +52,7 @@ PROFILES = ("silent", "balanced", "turbo")
 # Fanless tablets (Lenovo Legion Y700 Gen 4).
 try:
     with open("/sys/firmware/devicetree/base/compatible", "rb") as fh:
-        FANLESS = "lenovo,elden" in fh.read().decode(errors="replace").split("\0")
+        FANLESS = any(c in ("lenovo,elden", "lenovo,baldur") for c in fh.read().decode(errors="replace").split("\0"))
 except OSError:
     FANLESS = False
 

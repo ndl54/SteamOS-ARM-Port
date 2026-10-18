@@ -14,7 +14,7 @@ fi
 # back) in one boot jams its display controller and the screen stays on the
 # last frame. Starting either session at boot works, so switch by restarting
 # into it; on a normal boot the session stays the default until switched back.
-if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qx 'lenovo,elden'; then
+if tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qxE 'lenovo,(elden|baldur)'; then
   case "$session" in
     plasma|plasma-persistent|gamescope) ;;
     *) echo >&2 "!! Unrecognized session '$session'"; exit 1 ;;

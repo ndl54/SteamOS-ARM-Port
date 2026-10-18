@@ -1,0 +1,7 @@
+#!/bin/sh
+# Gen5 copies its retained Android boot image; it never changes active GPT slots.
+case "${1:-}" in
+  --check) exec /usr/lib/steamos-arm/gen5-storage check ;;
+  '') exec /usr/lib/steamos-arm/gen5-storage android ;;
+  *) echo 'usage: gen5-android [--check]' >&2; exit 2 ;;
+esac

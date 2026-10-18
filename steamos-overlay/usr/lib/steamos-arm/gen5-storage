@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Baldur-only boot copy, firmware import and two-partition SD growth.
+
+Reuse read-only storage primitives; never call Elden's slot/grow mutations.
+"""
+import fcntl
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+loader = importlib.machinery.SourceFileLoader('gen5_storage_checks', str(Path(__file__).with_name('tablet-storage')))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+s = importlib.util.module_from_spec(spec)
+loader.exec_module(s)
+require, run = s.require, s.run
+FW = Path('/var/lib/steamos-arm/firmware/baldur')
+HASH = Path('/etc/steamos-arm/android-boot.sha256')
+MANIFEST = Path('/usr/share/steamos-arm/baldur-firmware.tsv')
+
+
+def board():
+    require(b'lenovo,baldur' in Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0'),
+            'only Lenovo Baldur is supported')
+
+
+# This private module instance uses Gen5 identity. tablet-storage's executable
+# and all of its Elden entrypoints retain their exact original board gate.
+s.board = board
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def hash_value(path):
+    value = path.read_text().strip()
+    require(re.fullmatch('[0-9a-f]{64}', value), 'invalid Android hash')
+    return value
+
+
+def card():
+    root, disk = s.sd_root()
+    t = s.table(disk)
+    parts = t['partitions']
+    require(t['label'] == 'gpt' and len(parts) == 2, 'requires the Gen5 two-partition GPT card')
+    logs, system = parts
+    require(logs.get('name') == 'steamos-gen5-logs' and system.get('name') == 'steamos-gen5', 'wrong card labels/order')
+    require(logs['type'].lower() == 'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
+            and system['type'].lower() == '0fc63daf-8483-4772-8e79-3d69d8477de4', 'wrong partition types')
+    require(system['node'] == '/dev/' + root.name, 'root is not Gen5 system partition')
+    require(len(s.children(disk)) == 2, 'kernel/table partition count differs')
+    for index, entry in enumerate(parts, 1):
+        p = s.device(Path(entry['node']).name)
+        require(s.disk_of(p) == disk and p.joinpath('partition').read_text().strip() == str(index), 'wrong card ancestry/number')
+        require(entry['start'] > 0 and entry['size'] > 0 and entry.get('uuid'), 'missing card geometry/UUID')
+        env = dict(x.split('=', 1) for x in p.joinpath('uevent').read_text().splitlines() if '=' in x)
+        require(env.get('PARTNAME') == entry['name'], 'card label mismatch')
+        require(int(p.joinpath('start').read_text()) * 512 == entry['start'] * t['sectorsize']
+                and int(p.joinpath('size').read_text()) * 512 == entry['size'] * t['sectorsize'], 'card geometry mismatch')
+    require(logs['uuid'] != system['uuid'] and logs['start'] + logs['size'] <= system['start'], 'overlapping card partitions')
+    s.unused(disk, root)
+    run('sfdisk', '--verify', '/dev/' + disk.name)
+    return root, disk, t
+
+
+def android(check=False):
+    # slots checks direct SD root, unique UFS partitions, magic, geometry,
+    # mounts, swaps, holders and loop users. Gen5 never edits GPT slot bits.
+    disk, table, selected = s.slots()
+    active = [s.bits(e.get('attrs', '')) for _, e in selected]
+    require(50 in active[0] and 50 not in active[1], 'requires unambiguous active slot A')
+    a, b = [Path(e['node']) for _, e in selected]
+    require(selected[0][1]['size'] == selected[1][1]['size'], 'boot sizes differ')
+    want = hash_value(HASH)
+    require(digest(b) == want, 'boot_b differs from the recorded Android backup')
+    if check:
+        return
+    dest = Path(tempfile.mkdtemp(prefix='gen5-boot-', dir=s.STATE))
+    shutil.copyfile(a, dest / 'boot_a.img')
+    before = digest(a)
+    require(digest(dest / 'boot_a.img') == before, 'boot_a backup failed')
+    (dest / 'sha256').write_text(before + '\n')
+    os.sync()
+    require(s.slots() == (disk, table, selected) and hash_value(HASH) == want and digest(b) == want, 'storage changed')
+    print('Boot backup: ' + str(dest), flush=True)
+    run('dd', 'if=' + str(b), 'of=' + str(a), 'bs=4M', 'conv=fsync', 'status=none', timeout=120)
+    run('blockdev', '--flushbufs', str(a))
+    require(digest(a) == want, 'boot_a readback failed; do not reboot, inspect backup')
+    os.sync()
+    run('systemctl', '--no-block', 'reboot')
+
+
+def grow():
+    root, disk, before = card()
+    entry = before['partitions'][1]
+    fsuuid = run('blkid', '-s', 'UUID', '-o', 'value', '/dev/' + root.name)
+    require(re.fullmatch('[0-9a-fA-F-]{36}', fsuuid), 'missing filesystem UUID')
+    identity = dict(fsuuid=fsuuid, cid=disk.joinpath('device/cid').read_text().strip(),
+                    capacity=disk.joinpath('size').read_text().strip(), table=before['id'], partition=entry)
+    marker = s.STATE / 'gen5-sd-grown'
+    if marker.exists() and marker.read_text().strip() == json.dumps(identity, sort_keys=True):
+        return
+    s.backup(disk, before, 'gen5-grow')
+    require(card() == (root, disk, before), 'card changed')
+    run('sfdisk', '--lock=yes', '-N', '2', '--no-reread', '--no-tell-kernel', '--wipe=never',
+        '/dev/' + disk.name, input=f"{entry['start']}, +\n")
+    after = s.table(disk)
+    require(len(after['partitions']) == 2, 'partition count changed')
+    grown = after['partitions'][1]
+    require(grown['size'] >= entry['size'], 'root shrank')
+    expected = json.loads(json.dumps(before))
+    expected['partitions'][1]['size'] = grown['size']
+    if 'lastlba' in after:
+        require(after['lastlba'] >= before['lastlba'], 'usable space shrank')
+        expected['lastlba'] = after['lastlba']
+    require(after == expected, 'unexpected metadata change; inspect backup')
+    run('partx', '--update', '--nr', '2', '/dev/' + disk.name)
+    require(int(run('blockdev', '--getsize64', '/dev/' + root.name)) == grown['size'] * after['sectorsize'], 'stale kernel size; reboot and retry')
+    run('resize2fs', '/dev/' + root.name, timeout=300)
+    identity['partition'] = grown
+    marker.with_suffix('.tmp').write_text(json.dumps(identity, sort_keys=True) + '\n')
+    os.replace(marker.with_suffix('.tmp'), marker)
+    os.sync()
+
+
+def unpack(archive, dest):
+    expected = {}
+    for line in MANIFEST.read_text().splitlines():
+        if not line or line.startswith('#'):
+            continue
+        name, sha, _, _ = line.split('\t')
+        expected[name] = sha
+    with tarfile.open(archive) as tar:
+        seen = set()
+        for member in tar:
+            name = member.name.removeprefix('./')
+            if member.isdir():
+                require(name in ('', '.') or (not Path(name).is_absolute() and '..' not in Path(name).parts), 'unsafe directory')
+                continue
+            require(member.isfile() and name in expected and name not in seen, 'unexpected/duplicate firmware member')
+            require(0 < member.size <= 128 * 1024 * 1024, 'invalid firmware size')
+            data = tar.extractfile(member).read()
+            require(hashlib.sha256(data).hexdigest() == expected[name], 'firmware hash mismatch: ' + name)
+            target = dest / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            seen.add(name)
+        require(seen == set(expected), 'incomplete firmware archive')
+
+
+def firstboot():
+    _, _, t = card()
+    mount = Path(tempfile.mkdtemp(prefix='gen5-firmware-'))
+    mounted = False
+    staged = None
+    try:
+        run('mount', '-t', 'vfat', '-o', 'ro,nosuid,nodev,noexec', t['partitions'][0]['node'], str(mount))
+        mounted = True
+        want = hash_value(mount / 'android-boot.sha256')
+        archive = mount / 'firmware.tar'
+        new = digest(archive)
+        FW.parent.mkdir(parents=True, exist_ok=True)
+        if not (FW / '.from').exists() or (FW / '.from').read_text().strip() != new:
+            require(not FW.exists() or FW.is_symlink(), 'legacy firmware directory needs manual migration')
+            staged = Path(tempfile.mkdtemp(prefix='.baldur-', dir=FW.parent))
+            unpack(archive, staged)
+            (staged / '.from').write_text(new + '\n')
+            os.sync()
+            link = FW.with_name('.baldur-next')
+            link.unlink(missing_ok=True)
+            link.symlink_to(staged.name)
+            os.replace(link, FW)
+            staged = None  # keep generations for recovery; never delete a live tree
+        HASH.parent.mkdir(parents=True, exist_ok=True)
+        HASH.with_suffix('.tmp').write_text(want + '\n')
+        os.replace(HASH.with_suffix('.tmp'), HASH)
+        os.sync()
+    finally:
+        if staged:
+            shutil.rmtree(staged)
+        if mounted:
+            run('umount', str(mount))  # failure preserves the mount and directory
+        mount.rmdir()
+
+
+def main():
+    board()
+    require(os.geteuid() == 0, 'run as root')
+    action = sys.argv[1:]
+    require(action in (['android'], ['check'], ['grow'], ['firstboot']), 'invalid action')
+    s.STATE.mkdir(parents=True, exist_ok=True)
+    Path('/run/lock').mkdir(parents=True, exist_ok=True)
+    with open('/run/lock/tablet-gpt.lock', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if action == ['grow']:
+            grow()
+        elif action == ['firstboot']:
+            firstboot()
+        else:
+            android(action == ['check'])
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError, RuntimeError, tarfile.TarError, subprocess.SubprocessError) as exc:
+        print('gen5-storage: ' + str(exc), file=sys.stderr)
+        sys.exit(1)

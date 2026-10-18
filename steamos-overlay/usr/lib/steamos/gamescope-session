@@ -286,7 +286,7 @@ PANEL_ORIENT="${GAMESCOPE_ORIENTATION:-}"
 # Lenovo tablets: Game Mode turned the other way up (Handheld Control's "Flip
 # screen", snapshotted at boot), for controllers that plug into the
 # short side. Both run the panel "right"; touch follows through udev.
-if [[ -e /run/steamos-arm/flip-screen ]] && tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qxE 'lenovo,(tb321fu|elden)'; then
+if [[ -e /run/steamos-arm/flip-screen ]] && tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -qxE 'lenovo,(tb321fu|elden|baldur)'; then
   PANEL_ORIENT=left
 fi
 

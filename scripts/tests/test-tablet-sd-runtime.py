@@ -392,10 +392,14 @@ by_partlabel() {{ echo /mock/boot; }}
             calls.append(args[0])
             return types.SimpleNamespace(returncode=0)
         sub = types.SimpleNamespace(run=run, TimeoutExpired=subprocess.TimeoutExpired)
-        ns = {'asyncio': asyncio, 'subprocess': sub, 'Any': object}
+        ns = {'asyncio': asyncio, 'subprocess': sub, 'Any': object, 'gen5': lambda: False}
         exec(compile(tree, str(path), 'exec'), ns)
         self.assertTrue(asyncio.run(ns['boot_android'](object())))
         self.assertEqual([c[-1] for c in calls], ['check', 'android'])
+        calls.clear()
+        ns['gen5'] = lambda: True
+        self.assertTrue(asyncio.run(ns['boot_android'](object())))
+        self.assertEqual(calls, [['/usr/lib/steamos-arm/gen5-android', '--check'], ['/usr/lib/steamos-arm/gen5-android']])
         def missing(*a, **kw):
             raise FileNotFoundError('mock missing helper')
         sub.run = missing

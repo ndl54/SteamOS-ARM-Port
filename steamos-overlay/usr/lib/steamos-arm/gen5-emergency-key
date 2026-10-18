@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Lenovo Legion Y700 Gen 5: hold volume up + volume down for 10 seconds to
+go back to Android (gen5-android), even with Game Mode frozen, as long as the
+kernel runs. The keys come from the power-key PMIC and the GPIO keys; they're
+read straight from evdev, without grabbing them, so the volume still works.
+"""
+import fcntl
+import glob
+import os
+import subprocess
+import time
+
+HOLD = 10.0
+KEY_VOLUMEDOWN, KEY_VOLUMEUP = 114, 115
+
+
+def key_devices():
+    devs = []
+    for d in glob.glob("/sys/class/input/event*"):
+        try:
+            if open(f"{d}/device/name").read().strip() not in ("gpio-keys", "pmic_resin", "pm8941_resin"):
+                continue
+            caps = open(f"{d}/device/capabilities/key").read().split()
+        except OSError:
+            continue
+        # the key bitmap, last word first: bits 114 and 115 live in word 1
+        words = [int(w, 16) for w in reversed(caps)]
+        bits = 0
+        for i, w in enumerate(words):
+            bits |= w << (64 * i)
+        if bits >> KEY_VOLUMEDOWN & 1 or bits >> KEY_VOLUMEUP & 1:
+            devs.append("/dev/input/" + os.path.basename(d))
+    return devs
+
+
+def pressed(fd):
+    # EVIOCGKEY reads current state, so lost SYN events and hot unplug cannot
+    # leave a stale held key that later triggers a destructive boot switch.
+    data = bytearray(96)
+    fcntl.ioctl(fd, 0x80004518 | (len(data) << 16), data, True)
+    bits = int.from_bytes(data, "little")
+    return {key for key in (KEY_VOLUMEDOWN, KEY_VOLUMEUP) if bits >> key & 1}
+
+
+def main():
+    with open("/sys/firmware/devicetree/base/compatible", "rb") as f:
+        if b"lenovo,baldur" not in f.read().split(b"\0"):
+            return
+    fds = []
+    try:
+        for p in key_devices():
+            fds.append(os.open(p, os.O_RDONLY | os.O_NONBLOCK))
+        if not fds:
+            return
+        since = None
+        fired = False
+        while True:
+            down = set()
+            for fd in fds:
+                down.update(pressed(fd))  # disconnected/error -> exit and reopen
+            both = {KEY_VOLUMEDOWN, KEY_VOLUMEUP} <= down
+            if not both:
+                since, fired = None, False
+            elif since is None:
+                since = time.monotonic()
+            if not fired and since is not None and time.monotonic() - since >= HOLD:
+                subprocess.run(["/usr/lib/steamos-arm/gen5-android"], check=False)
+                fired = True  # no repeat write until both-key chord is released
+            time.sleep(0.5)
+    finally:
+        for fd in fds:
+            os.close(fd)
+
+
+if __name__ == "__main__":
+    main()
