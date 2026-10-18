@@ -8,8 +8,12 @@ foreground layer) there.
 Reads the binary AndroidManifest.xml and resolves label/icon references
 through resources.arsc, so it needs no Android tools.
 """
+import os
+import re
 import struct
 import sys
+import tempfile
+import unicodedata
 import zipfile
 
 NAME, ENABLED, LABEL, ICON = 0x01010003, 0x0101000E, 0x01010001, 0x01010002
@@ -142,6 +146,32 @@ class Resources:
         return [p for _, p in sorted(out, reverse=True)]
 
 
+def clean_label(label):
+    # Keep the three-line metadata protocol intact before Bash mapfile reads
+    # it. Slice Unicode characters, never encoded UTF-8 bytes (GNU cut -c).
+    return "".join(c for c in (label or "")
+                   if unicodedata.category(c) != "Cc")[:80]
+
+
+def write_png(apk, path, output):
+    data = apk.read(path)
+    # Some APKs call WebP data .png. A signature check is not full PNG
+    # decoding, but rejects those without handing them to Steam's decoder.
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return False
+    fd, temp = tempfile.mkstemp(prefix=".konkr-icon-", dir=os.path.dirname(output) or ".")
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, output)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+    return True
+
+
 def main():
     apk = zipfile.ZipFile(sys.argv[1])
     icon_out = sys.argv[2] if len(sys.argv) > 2 else None
@@ -182,15 +212,21 @@ def main():
         activity = pkg + activity
     elif activity and "." not in activity:
         activity = pkg + "." + activity
+    # Package/activity are protocol fields too; reject malformed identity
+    # instead of allowing it to shift lines or become shell/path syntax.
+    if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*", pkg):
+        raise ValueError("invalid Android package name")
+    if any(unicodedata.category(c) == "Cc" for c in activity):
+        raise ValueError("invalid Android activity name")
     print(pkg)
-    print(label)
+    print(clean_label(label) or pkg)
     print(activity)
 
     if icon_out and res and icon_ref:
         for path in res.files(icon_ref):
             if path.endswith(".png") and path in apk.namelist():
-                open(icon_out, "wb").write(apk.read(path))
-                return
+                if write_png(apk, path, icon_out):
+                    return
             if path.endswith(".xml") and path in apk.namelist():
                 # adaptive icon: use the foreground layer
                 for kind, tag, a in axml(apk.read(path)):
@@ -198,8 +234,8 @@ def main():
                         ref = next((v for v in a.values() if v[1] == T_REFERENCE), None)
                         for fg in res.files(ref[2]) if ref else []:
                             if fg.endswith(".png") and fg in apk.namelist():
-                                open(icon_out, "wb").write(apk.read(fg))
-                                return
+                                if write_png(apk, fg, icon_out):
+                                    return
 
 
 if __name__ == "__main__":

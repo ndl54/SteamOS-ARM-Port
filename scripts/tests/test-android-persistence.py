@@ -187,7 +187,7 @@ asx() {
 SYS="$PWD/sys"; DESKTOP_DIR="$PWD/desktop"; APK_INFO=unused; pkg=com.test
 mapfile() { meta=(com.test 'Fixture app' ''); cat >/dev/null; }
 mktemp() { echo "$PWD/extracted.apk"; }
-python3() { if [[ "$(cat "$2")" == split ]]; then echo png >"$3"; fi; }
+python3() { if [[ "$(cat "$2")" == split ]]; then printf '\211PNG\r\n\032\nfixture' >"$3"; fi; }
 steam_add() { echo "$*" >>trace; }; say() { :; }
 asx() {
   echo "$1" >>trace
@@ -205,7 +205,7 @@ asx() {
                 r = focus.shell(mocks + focus.function('add_title') + 'add_title com.test', tmp, MODE=mode)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 root = Path(tmp)
-                self.assertEqual((root / 'sys/icons/com.test.png').read_text(), 'png\n')
+                self.assertEqual((root / 'sys/icons/com.test.png').read_bytes(), b'\x89PNG\r\n\x1a\nfixture')
                 self.assertFalse((root / 'extracted.apk').exists())
                 desktop = root / 'desktop/konkr-android-com.test.desktop'
                 self.assertEqual(desktop.exists(), mode == 'launcher')

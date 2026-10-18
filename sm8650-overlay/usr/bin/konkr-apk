@@ -376,7 +376,8 @@ overlay_dirs() {
 # --- titles -----------------------------------------------------------------
 
 add_title() {
-  local pkg="$1" paths path apk meta label activity desktop icon="${SYS}/icons/${pkg}.png"
+  local pkg="$1" paths path apk meta label activity desktop icon
+  icon="${SYS}/icons/${pkg}.png"
   paths="$(asx "pm path $pkg" | sed -n 's/^package://p' | grep '\.apk$' || true)"
   path="$(head -n1 <<<"$paths")"
   [[ -n "$path" ]] || return 0
@@ -396,14 +397,24 @@ add_title() {
   # The launcher entry can live outside the base manifest too: ask Android.
   [[ -n "$activity" ]] || activity="$(asx "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg" | tail -n1 | grep / || true)"
   [[ -n "$activity" ]] || return 0   # nothing to open (services, libraries)
+  # A name with control characters, or an "icon" that isn't really a PNG
+  # (some APKs keep WebP under .png), went into the Steam shortcut as is; a
+  # Play Store install's shortcut then took Steam's library down (Legion Y700
+  # Gen 4 tester).
+  # apk-info cleans the label before its line-based metadata is emitted,
+  # and limits Unicode characters without splitting a UTF-8 sequence.
   label="${meta[1]:-$pkg}"
+  [[ -n "$label" ]] || label="$pkg"
+  if [[ -f "$icon" && "$(head -c 8 "$icon" | od -An -tx1 | tr -d ' \n')" != 89504e470d0a1a0a ]]; then
+    rm -f "$icon"
+  fi
   [[ -f "$icon" ]] || icon=android-package-archive
   desktop="${DESKTOP_DIR}/konkr-android-${pkg}.desktop"
   mkdir -p "$DESKTOP_DIR"
   cat >"$desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=${label}
+Name=${label//\\/\\\\}
 Comment=Android app (${pkg})
 Exec=/usr/bin/konkr-apk run ${pkg}
 Icon=${icon}
@@ -695,6 +706,9 @@ cmd_setup() {
   steam_has com.android.vending && return 0
   mkdir -p "${SYS}/icons" "$DESKTOP_DIR"
   python3 "$APK_INFO" "${OVERLAY_ROOT}/common/system/product/priv-app/Phonesky/Phonesky.apk" "$icon" >/dev/null 2>&1 || true
+  if [[ -f "$icon" && "$(head -c 8 "$icon" | od -An -tx1 | tr -d ' \n')" != 89504e470d0a1a0a ]]; then
+    rm -f "$icon"
+  fi
   [[ -f "$icon" ]] || icon=android-package-archive
   cat >"$desktop" <<EOF
 [Desktop Entry]
