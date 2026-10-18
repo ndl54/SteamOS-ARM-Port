@@ -65,7 +65,7 @@ Availability depends on the device, built components and installed image:
 - Android app/Play Store integration and device-specific restart-to-Android controls in Handheld Control.
 - Settings > System update integration, subject to a compatible package and configured update source.
 - microSD boot on supported devices and internal installation on explicitly supported targets; internal installation can erase Android user data.
-- External-display Game Mode support. USB-C DisplayPort audio is device-dependent and unverified on this integrated fork, including Odin 3 and Pocket FIT Elite; do not assume dock video implies working sound.
+- External-display Game Mode support. USB-C DisplayPort monitor audio is temporarily disabled in the Odin 3 and Pocket FIT Elite UCM profiles to avoid a reported startup probe failure that can remove the whole sound card. Their DP backend/topology remain; USB Audio Class DACs/headsets are outside this change. Other devices remain device-dependent and unverified on this integrated fork; dock video does not establish working sound.
 - Lossless Scaling frame generation through lsfg-vk 2.0 or Classic 1.x, Decky and the performance overlay.
 - Steam Remote Play hardware-decoder integration and optional PyroWave; actual decode/performance support requires device validation.
 - Loadout selections for the SoC, sleep/fan policies and low-battery shutdown handling; battery life and reliable shutdown are not established by source review.

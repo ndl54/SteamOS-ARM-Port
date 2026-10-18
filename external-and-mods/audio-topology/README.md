@@ -15,6 +15,18 @@ on hardware. The existing three PCM records and routes match the pinned
 ROCKNIX blob; the parsed existing module tokens differ only in port counts
 (tokens 204/205). See the integration review for the binary checks and limits.
 
+The Odin 3 and Pocket FIT Elite UCM profiles currently omit the HDMI device
+and its DP mixer sequences. Upstream reports that probing the DP PCM with no
+monitor can fail in the DSP and cause PipeWire to discard the whole card.
+The DP backend and topology (including PCM 3) remain, but normal UCM output
+selection no longer offers monitor audio, even when a monitor is connected.
+This does not disable USB Audio Class peripherals or remove the raw ALSA PCM;
+manual/pro-audio access can still reach it and is not validated as safe.
+Re-enabling needs sink-aware probing/activation and device tests for cold
+boot without a monitor, hotplug, unplug during playback, suspend/resume and
+speaker/headphone recovery on both boards. See
+[review 108](../../docs/upstream-sync-20261017/108-66e1d48.md).
+
 The supplied blob is kept unchanged from upstream. The generator revision
 used to produce it was not recorded; the commands below are an upstream
 rebuild recipe, not a pinned or verified reproducible build. Review 077 did
