@@ -1,0 +1,227 @@
+#!/usr/bin/python3
+"""Best-effort battery wake/check for plain kernel suspend only.
+
+Never infer a wake reason from wall time or re-suspend a user. An RTC wake
+above the cutoff stays awake under UPower's 4% policy. No physical poweroff
+or battery gauge freshness can be guaranteed by this userspace hook.
+"""
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import syslog
+import tempfile
+import time
+
+CUT = 8
+SUPPLIES = Path('/sys/class/power_supply')
+RTC = Path('/sys/class/rtc/rtc0/wakealarm')
+BOOT = Path('/proc/sys/kernel/random/boot_id')
+SUCCESS = Path('/sys/power/suspend_stats/success')
+STATE = Path('/run/steamos-arm-low-battery')
+LOCK = Path('/run/steamos-arm-low-battery.lock')
+RATE = Path('/var/lib/steamos-arm/sleep-drain-rate')
+
+
+def log(message):
+    syslog.openlog('low-battery')
+    syslog.syslog(syslog.LOG_INFO, message)
+
+
+def read(path, missing=None):
+    try:
+        return path.read_text().strip()
+    except FileNotFoundError:
+        if missing is not None:
+            return missing
+        raise
+
+
+def number(value, maximum):
+    if (not isinstance(value, str) or not value.isascii()
+            or not value.isdecimal() or len(value) > 20):
+        raise ValueError('invalid unsigned value')
+    value = int(value)
+    if value > maximum:
+        raise ValueError('out-of-range value')
+    return value
+
+
+def battery():
+    """Require one present system battery and no online/unknown supply.
+
+    Unknown/missing scope is common on PMIC drivers; explicitly Device
+    scoped peripherals never supply the system. Multiple internal batteries
+    require an aggregation policy, so leave them to UPower.
+    """
+    batteries = []
+    for supply in sorted(SUPPLIES.iterdir()):
+        scope = read(supply / 'scope', 'Unknown')
+        if scope == 'Device':
+            continue
+        if scope not in ('System', 'Unknown'):
+            raise ValueError('unknown supply scope')
+        kind = read(supply / 'type')
+        if kind == 'Battery':
+            present = read(supply / 'present', '1')
+            if present == '0':
+                continue
+            if present != '1':
+                raise ValueError('unknown battery presence')
+            batteries.append((supply.name, number(read(supply / 'capacity'), 100),
+                              read(supply / 'status')))
+        else:
+            # Unknown types are not evidence of an absent charger either.
+            if read(supply / 'online', '?') != '0':
+                return None
+    if len(batteries) != 1 or batteries[0][2] != 'Discharging':
+        return None
+    return batteries[0][:2]
+
+
+def publish(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.low-battery-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as out:
+            json.dump(data, out)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def load_state():
+    try:
+        state = json.loads(STATE.read_text())
+        if (state['boot'] != read(BOOT) or state['action'] != 'suspend'
+                or not isinstance(state['battery'], str)
+                or not state['battery'] or '/' in state['battery']):
+            raise ValueError('unpaired state')
+        for key, maximum in (('start', 2**63-1), ('cap', 100),
+                             ('alarm', 2**63-1), ('success', 2**63-1)):
+            if type(state[key]) is not int or not 0 <= state[key] <= maximum:
+                raise ValueError('invalid saved ' + key)
+        return state
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, KeyError, TypeError):
+        log('invalid/unpaired state ignored; foreign RTC alarm left alone')
+        return None
+
+
+def cleanup(state):
+    # Compare with the exact absolute value read back after arming, not the
+    # system wall clock (RTC may have a different epoch offset). Never clear
+    # a pre-existing/replaced alarm. sysfs has no cross-process compare-clear.
+    if state and state['alarm']:
+        try:
+            if read(RTC) == str(state['alarm']):
+                RTC.write_text('0\n')
+        except OSError as error:
+            log('owned alarm cleanup failed: ' + str(error))
+    STATE.unlink(missing_ok=True)
+
+
+def successes():
+    try:
+        return number(read(SUCCESS), 2**63-1)
+    except (OSError, ValueError):
+        return 0
+
+
+def rate_for(name):
+    try:
+        data = json.loads(RATE.read_text())
+        rate = data['rate']
+        if data['battery'] == name and type(rate) is int and 300 <= rate <= 10000:
+            return rate
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return 300  # hundredths of a percentage point/hour; estimate, not a bound
+
+
+def run(phase, action):
+    if action != 'suspend' or phase not in ('pre', 'post'):
+        return  # never compete with suspend-then-hibernate's alarm
+    with LOCK.open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log('another battery hook is active; skipped')
+            return
+        before = load_state()
+        cleanup(before)  # even if battery/RTC disappeared or charging resumed
+        sample = battery()
+        if sample is None:
+            log('battery/charger state unsuitable; skipped')
+            return
+        name, cap = sample
+        now = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
+        if phase == 'pre':
+            # Never replace somebody else's alarm, even one later than ours.
+            # A plain relative write fails EBUSY if another writer gets first.
+            if read(RTC) not in ('', '0'):
+                log('RTC alarm already owned; skipped')
+                return
+            rate = rate_for(name)
+            seconds = max(60, min(86400, max(0, cap - CUT) * 360000 // rate))
+            state = dict(boot=read(BOOT), action=action, battery=name,
+                         start=now, cap=cap, alarm=0, success=successes())
+            publish(STATE, state)
+            RTC.write_text('+' + str(seconds) + '\n')
+            state['alarm'] = number(read(RTC), 2**63-1)
+            if not state['alarm']:
+                raise ValueError('RTC alarm was not armed')
+            try:
+                publish(STATE, state)
+            except OSError:
+                cleanup(state)
+                raise
+            log(f'asleep at {cap}%: check in {seconds}s, estimate {rate}/100 %/h')
+            return
+        if not before or before['battery'] != name or now < before['start']:
+            return
+        # Allow resumed PMIC communications to update. Re-read all supplies,
+        # not only capacity; a plug or gauge recovery cancels low-battery action.
+        time.sleep(1)
+        again = battery()
+        if again is None or again[0] != name:
+            return
+        cap2 = again[1]
+        elapsed = (now - before['start']) // 1000000000
+        if (elapsed >= 3600 and successes() > before['success']
+                and before['cap'] > max(cap, cap2)):
+            rate = (before['cap'] - max(cap, cap2)) * 360000 // elapsed
+            if rate_for(name) < rate <= 10000:
+                try:
+                    publish(RATE, dict(battery=name, rate=rate))
+                except OSError as error:
+                    log('cannot save drain estimate: ' + str(error))
+        if max(cap, cap2) <= CUT:
+            log(f'resumed at {cap2}% on battery: requesting poweroff')
+            # A synchronous shutdown waits on this very sleep service. Queue
+            # the normal shutdown transaction and release the hook so systemd
+            # can finish resume/ExecStop recovery (including the EVO drop-in).
+            result = subprocess.run(['systemctl', '--no-block', 'poweroff'],
+                                    timeout=10, check=False)
+            if result.returncode:
+                log('poweroff request failed; leaving system awake under UPower')
+        else:
+            log('above cutoff; staying awake under UPower (wake cause unknown)')
+
+
+def main():
+    try:
+        if len(sys.argv) == 3:
+            run(sys.argv[1], sys.argv[2])
+    except (OSError, ValueError, KeyError, TypeError, UnicodeError,
+            subprocess.TimeoutExpired) as error:
+        log('battery protection unavailable: ' + str(error))
+    return 0  # a hook cannot veto suspend; never strand resume on a read error
+
+
+if __name__ == '__main__':
+    sys.exit(main())
