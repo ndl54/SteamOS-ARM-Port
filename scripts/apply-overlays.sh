@@ -188,6 +188,9 @@ install_file "$OVL/usr/lib/steamos/sm8550-prepare-plasma" \
   "$R/usr/lib/steamos/sm8550-prepare-plasma" 0755
 install_file "$OVL/usr/lib/steamos/sm8550-startplasma" \
   "$R/usr/lib/steamos/sm8550-startplasma" 0755
+# Keep the compatibility launcher available without rewriting Steam autostart
+# or changing session-wide DPI. Keyboard-only fitting needs runtime validation.
+install_file "$OVL/usr/lib/steamos/desktop-steam" "$R/usr/lib/steamos/desktop-steam" 0755
 backup "$R/usr/bin/steamos-session-select" "$STOCK/usr/bin/steamos-session-select"
 install_file "$OVL/usr/bin/steamos-session-select" \
   "$R/usr/bin/steamos-session-select" 0755

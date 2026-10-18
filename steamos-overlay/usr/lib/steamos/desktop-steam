@@ -1,0 +1,8 @@
+#!/bin/bash
+# Compatibility entry point for Desktop Mode Steam launchers.
+# Do not change Xft.dpi here: xrdb changes the shared X resource database,
+# affecting other Steam windows and unrelated X clients. The X screen width
+# is also not the keyboard output's workarea on scaled/multi-output desktops.
+# Keep arguments, user scaling choices and Steam's exit/signal behavior intact
+# until a keyboard-only sizing mechanism is verified. See review 093.
+exec /usr/bin/steam "$@"
