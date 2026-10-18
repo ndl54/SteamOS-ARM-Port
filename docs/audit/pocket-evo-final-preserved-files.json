@@ -1,0 +1,12 @@
+{
+  "docs/pocket-evo-led.md": "b19fd038e5ebab288693c536c122a6bf08320b38e042c9671ea20337b431099e",
+  "external-and-mods/Decky/sm8650/konkr-control/dist/index.js": "2a4ef1e5994884db567ee4db663d23ee974b588b6eb7ded2b1d9682bceb290bc",
+  "external-and-mods/Decky/sm8650/konkr-control/main.py": "109c07d70de7b7faf1f76ac3ab7cd35ec985a2461c2dfde125d18448fb2363b0",
+  "scripts/apply-overlays.sh": "433553ce1a758ef8616992799a2f81926cb57d53e7999c4e3dd5529a5f66d015",
+  "scripts/install-pocket-evo-led.sh": "442d83f6b579754703a788ced1fbd3867c9c8e34dcfa67c5e1a038ab224d8e71",
+  "scripts/tests/test-pocket-evo-led-ui.cjs": "29042b8dc7c4d287323466070c63bde965581d2b52cc360843975dab71d04aab",
+  "scripts/tests/test-pocket-evo-led.py": "4ebfaf381ba6c6baaf3dddd7f90c4b8493e0a8129c8f376ec5126a794d116df9",
+  "sm8550-overlay/usr/lib/pocketevo/pocket_evo_led.py": "092768b4c31b267917c1602889c10f502eb4058ee39db9475bff884aaca2155e",
+  "sm8550-overlay/usr/lib/systemd/system/pocket-evo-led-sleep.service": "51a8bacd9d069fa521592fdab66c5ea1e2c75d4933338aaa8fc8adeda6db6469",
+  "sm8550-overlay/usr/lib/systemd/system/pocket-evo-led.service": "775a0446befe2909aeafbcdade1046a7001085b076616935c1c837521ceb7271"
+}

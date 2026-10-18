@@ -86,3 +86,10 @@ Local tests cover board selection, unchanged behavior on other devices, audio
 routing, and kernel recipe isolation. Rebuilt images still require device tests
 for speaker output, external-display audio, portal file choosers, and session
 switching.
+
+The final validation hash guard is `docs/audit/pocket-evo-final-preserved-files.json`,
+anchored to the completed queue at `a656b80faf6e4853f07758414ea1dbbcdfec7ca1`.
+The older `pocket-evo-preserved-files.json` remains historical evidence: three
+shared files gained reviewed tablet/Android and installer changes during the
+queue. The EVO LED implementation, services, installer, tests and documentation
+still match the older hashes; both validators enforce all ten final-start bytes.

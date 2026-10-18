@@ -105,7 +105,7 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
         for f in ('main.py', 'plugin.json', 'package.json', 'dist/index.js'):
             same(dest/f, REPO/'external-and-mods/Decky/sm8650/konkr-control'/f)
     assert (home/'steamos').stat().st_uid == (home/'steamos/homebrew/plugins/konkr-control').stat().st_uid
-    for path, sha in json.loads((REPO/'docs/audit/pocket-evo-preserved-files.json').read_text()).items():
+    for path, sha in json.loads((REPO/'docs/audit/pocket-evo-final-preserved-files.json').read_text()).items():
         assert digest(REPO/path) == sha, path
 
     embedded = json.loads((boot/'pocketevo-build.json').read_text())
@@ -159,7 +159,7 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
             'boot_payload': 'identical to tested kernel except preserved root cmdline',
             'runtime_versions': runtime, 'files_compared': len(checked),
             'capabilities': 'cap_sys_nice=eip at both Gamescope paths',
-            'led_rgb': '10 protected source hashes and installed LED/plugin bytes unchanged',
+            'led_rgb': '10 source hashes match a656b80; installed LED/plugin bytes match current source',
             'service_links': 'root and persistent etc verified', 'runtime_files_sha256': checked}
 
 

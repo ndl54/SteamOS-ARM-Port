@@ -91,9 +91,9 @@ def main():
         assert 600_000_000 <= bitrate <= 5_000_000_000
         assert ref['active_dsc_bits_per_second'] < 4 * bitrate
         print(f"{ref['hz']} Hz: {m['clock']*1000/m['htotal']/m['vtotal']:.6f}, lane {bitrate} bit/s")
-    for path, digest in json.loads((ROOT / 'docs/audit/pocket-evo-preserved-files.json').read_text()).items():
+    for path, digest in json.loads((ROOT / 'docs/audit/pocket-evo-final-preserved-files.json').read_text()).items():
         assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest, path
-    print('10 LED/RGB baseline files unchanged')
+    print('10 LED/RGB files match final-review starting commit a656b80')
     if len(sys.argv) < 3:
         return
     output = Path(sys.argv[2]).resolve()
