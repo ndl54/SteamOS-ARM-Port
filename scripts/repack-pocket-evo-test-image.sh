@@ -9,6 +9,7 @@ output=$(readlink -f "${KERNEL_OUTPUT:?set KERNEL_OUTPUT to the validated kernel
 GSBUILD=${GAMESCOPE_BUILD:?set GAMESCOPE_BUILD to the validated Gamescope build}
 IPBUILD=${INPUTPLUMBER_BUILD:?set INPUTPLUMBER_BUILD to freshly built output}
 MHBUILD=${MANGOHUD_BUILD:?set MANGOHUD_BUILD to freshly built mangoapp output}
+KDEBUILD=${KDE_BUILD:?set KDE_BUILD to rebuilt KDE extras output}
 KSOURCE=${KERNEL_SOURCE:?set KERNEL_SOURCE to the freshly prepared and built kernel tree}
 PROVENANCE=${COMPONENT_MANIFEST:?set COMPONENT_MANIFEST to verified build input/output manifest}
 krel=$(basename "$output")
@@ -99,6 +100,7 @@ install -m644 "$output/config-$krel" "${mnt}/root/usr/lib/modules/$krel/config"
 install -m644 "$output/System.map-$krel" "${mnt}/root/usr/lib/modules/$krel/System.map"
 python3 /src/scripts/stage-pocket-evo-runtime.py "${mnt}/root" "${mnt}/home" "$ART/runtime-staging.json"
 install -m755 "$MHBUILD/mangoapp" "${mnt}/root/usr/bin/mangoapp"
+KDE_EXTRAS="$KDEBUILD/kde-extras.tar" bash /src/scripts/install-kde-extras.sh "${mnt}/root"
 for entry in \
   steamos-overlay/usr/lib/steamos/sm8550-audio-pipewire \
   steamos-overlay/usr/lib/steamos-arm/steamos-arm-wifi-wake \
@@ -206,7 +208,7 @@ test -s "${mnt}/root/usr/lib/modules/$krel/modules.dep"
 for m in nf_tables nft_ct nft_nat nft_masq nft_redir nft_reject_inet nft_log nft_limit nft_fib_inet chipone_tddi; do
   modinfo -b "${mnt}/root" -k "$krel" "$m" | sed -n '1p;/^vermagic:/p'
 done
-python3 /src/scripts/verify-pocket-evo-image.py "${mnt}/root" "${mnt}/boot" "${mnt}/home" "$output" "$GSBUILD" "$IPBUILD" "$MHBUILD" > "$ART/image-verification.json"
+python3 /src/scripts/verify-pocket-evo-image.py "${mnt}/root" "${mnt}/boot" "${mnt}/home" "$output" "$GSBUILD" "$IPBUILD" "$MHBUILD" "$KDEBUILD" > "$ART/image-verification.json"
 sync
 umount "${mnt}/home" "${mnt}/root" "${mnt}/boot"
 fsck.fat -n "${loop}p1"

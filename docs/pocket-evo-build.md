@@ -20,7 +20,7 @@ Wayland override. The portal inherits the active Game Mode or Plasma environment
 
 The October 11 binaries are historical artifacts. After source changes, build
 all affected EVO components in new work/output directories: kernel (including
-inherited patches and initramfs), Gamescope/WSI, InputPlumber, and mangoapp.
+inherited patches and initramfs), Gamescope/WSI, InputPlumber, mangoapp, and the KDE extras bundle.
 Build userspace against the read-only baseline rootfs to retain its glibc ABI.
 Do not run a builder that writes into the immutable baseline mount. See the
 [final validation report](upstream-sync-20261017/FINAL-VALIDATION-BUILD.md) for the
@@ -41,6 +41,7 @@ The repacker now requires these explicit container paths:
 - `GAMESCOPE_BUILD`: new Meson build directory.
 - `INPUTPLUMBER_BUILD`: new binary and SHA256 output directory.
 - `MANGOHUD_BUILD`: new mangoapp output directory.
+- `KDE_BUILD`: new KDE extras output directory with its stage tree/archive.
 - `COMPONENT_MANIFEST`: created by `pocket-evo-component-manifest.py create` and
   verified again before installation.
 - `IMAGE_OUTPUT_DIR`: unused artifact directory; existing directories refuse.
@@ -58,7 +59,7 @@ Old `.pyc` beside replaced Python sources is removed. Both `/etc` layers are
 updated where present; explicit home preferences are not seeded over.
 
 `verify-pocket-evo-image.py ROOT BOOT HOME KERNEL_OUTPUT GAMESCOPE_BUILD
-INPUTPLUMBER_BUILD MANGOHUD_BUILD` checks boot payload, modules/firmware,
+INPUTPLUMBER_BUILD MANGOHUD_BUILD KDE_BUILD` checks boot payload, modules/firmware,
 installed bytes, capabilities, service links, LED preservation and ELF/CLI
 loading inside a device-free namespace. FAT and both ext4 partitions must pass
 read-only fsck. The repacker preserves baseline SHA256 and partition-table

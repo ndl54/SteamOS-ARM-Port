@@ -15,7 +15,7 @@ def digest(p):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud):
+def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
     krel = kernel.name
     checked = {}
 
@@ -61,6 +61,11 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud):
     assert (root/manifest['layer']['library_path'].lstrip('/')).is_file()
     same(root/'usr/bin/inputplumber', inputplumber/'inputplumber-0.81.0-konkr')
     same(root/'usr/bin/mangoapp', mangohud/'mangoapp')
+    for p in (kde/'stage').rglob('*'):
+        rel=p.relative_to(kde/'stage'); actual=root/rel
+        if p.is_symlink():
+            assert actual.is_symlink() and os.readlink(actual)==os.readlink(p), rel
+        elif p.is_file(): same(actual,p)
     for path in (
         'steamos-overlay/usr/lib/steamos/gamescope-session',
         'steamos-overlay/usr/lib/steamos/sm8550-audio-pipewire',
@@ -134,7 +139,14 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud):
     for path in ('/usr/bin/mangoapp', '/usr/bin/inputplumber', '/usr/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so', '/usr/local/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so'):
         deps = subprocess.check_output(run + ['/usr/bin/ldd', '-r', path], stderr=subprocess.STDOUT, text=True)
         assert 'not found' not in deps and 'undefined symbol' not in deps, deps
-    return {'result': 'PASS', 'hardware': 'not tested', 'kernel_release': krel,
+    for p in (kde/'stage').rglob('*'):
+        if p.is_symlink() or not p.is_file(): continue
+        with p.open('rb') as f: elf=f.read(4)==b'\x7fELF'
+        if elf:
+            path='/'+str(p.relative_to(kde/'stage'))
+            deps=subprocess.check_output(run+['/usr/bin/ldd','-r',path],stderr=subprocess.STDOUT,text=True)
+            assert 'not found' not in deps and 'undefined symbol' not in deps, deps
+    return {'result': 'PASS' , 'hardware': 'not tested', 'kernel_release': krel,
             'boot_payload': 'identical to tested kernel except preserved root cmdline',
             'runtime_versions': runtime, 'files_compared': len(checked),
             'capabilities': 'cap_sys_nice=eip at both Gamescope paths',

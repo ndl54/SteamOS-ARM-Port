@@ -11,7 +11,7 @@ SCOPES=['external-and-mods/kernel-common','external-and-mods/kernel-sm8550',
         'external-and-mods/kernel-pocketevo','external-and-mods/gamescope',
         'external-and-mods/InputPlumber','external-and-mods/MangoHud-qualcomm',
         'scripts/build-inputplumber-konkr.sh','scripts/build-gamescope-in-rootfs.sh',
-        'scripts/build-mangohud-in-rootfs.sh']
+        'scripts/build-mangohud-in-rootfs.sh','scripts/build-kde-extras-in-rootfs.sh']
 def sha(path):
     h=hashlib.sha256()
     with path.open('rb') as f:
@@ -30,7 +30,7 @@ def outputs(paths):
 def main():
     action,path=sys.argv[1],Path(sys.argv[2])
     if action=='create':
-        kernel,gs,ip,mh,ks,stagedgs=map(lambda p:Path(p).resolve(),sys.argv[3:])
+        kernel,gs,ip,mh,kde,ks,stagedgs=map(lambda p:Path(p).resolve(),sys.argv[3:])
         # Compare every vendored Gamescope source file with the compiled source
         # copy, excluding subprojects supplied by its separately pinned checkout.
         for n,digest in inputs().items():
@@ -40,7 +40,7 @@ def main():
                 assert actual.is_file() and sha(actual)==digest, n
         data={'source_commit':subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip(),
               'repo_inputs_sha256':inputs(),
-              'outputs_sha256':outputs([kernel,gs/'src/gamescope',gs/'src/gamescopectl',gs/'src/gamescopereaper',gs/'src/gamescopestream',gs/'layer/libVkLayer_FROG_gamescope_wsi_aarch64.so',ip/'inputplumber-0.81.0-konkr',mh/'mangoapp']),
+              'outputs_sha256':outputs([kernel,gs/'src/gamescope',gs/'src/gamescopectl',gs/'src/gamescopereaper',gs/'src/gamescopestream',gs/'layer/libVkLayer_FROG_gamescope_wsi_aarch64.so',ip/'inputplumber-0.81.0-konkr',mh/'mangoapp',kde/'stage',kde/'kde-extras.tar']),
               'kernel_config_sha256':sha(ks/'.config'),
               'kernel_patch_stamp':(ks/'.pocketevo-patched').read_text().strip(),
               'kernel_source_tar_sha256':sha(ks.parent/'cache/linux-7.2.8.tar.xz'),

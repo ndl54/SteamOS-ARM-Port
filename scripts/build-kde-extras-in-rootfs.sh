@@ -65,7 +65,7 @@ fetch() {  # fetch NAME URL
   log "fetching $name"
   curl -fsSL --retry 3 -o "$SRC/$name.tar.xz" "$url"
   tar -C "$SRC" -xJf "$SRC/$name.tar.xz"
-  rm -f "$SRC/$name.tar.xz"
+  sha256sum "$SRC/$name.tar.xz" > "$SRC/$name.tar.xz.sha256"
 }
 
 fetch "bluez-qt-${KF_VER}" "${KDE_MIRROR}/frameworks/${KF_VER%.*}/bluez-qt-${KF_VER}.tar.xz"
@@ -78,13 +78,13 @@ rm -rf "$OUT/stage" "$OUT/build" "$OUT/kde-extras.tar"
 mkdir -p "$OUT/stage" "$OUT/build"
 
 run() {
-  bwrap --bind "$R" / \
-    --bind "$SRC" /src \
-    --bind "$OUT" /out \
+  bwrap --ro-bind "$R" / \
     --dev /dev --proc /proc --tmpfs /run --tmpfs /tmp \
-    --unshare-pid --die-with-parent --chdir /out \
+    --dir /tmp/kde-src --bind "$SRC" /tmp/kde-src \
+    --dir /tmp/kde-out --bind "$OUT" /tmp/kde-out \
+    --unshare-pid --die-with-parent --chdir /tmp/kde-out \
     --setenv PATH /usr/bin \
-    --setenv CMAKE_PREFIX_PATH /out/stage/usr \
+    --setenv CMAKE_PREFIX_PATH /tmp/kde-out/stage/usr \
     "$@"
 }
 
@@ -94,21 +94,21 @@ build() {  # build SOURCE-DIR [cmake args...]
   # No KDocTools in the rootfs, and the handbooks aren't needed.
   sed -i -e 's/\bDocTools\b//' -e '/add_subdirectory *( *doc/d' -e '/kdoctools_install/d' \
     "$SRC/$s/CMakeLists.txt"
-  run cmake -S "/src/$s" -B "/out/build/$s" -G Ninja \
+  run cmake -S "/tmp/kde-src/$s" -B "/tmp/kde-out/build/$s" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_LIBEXECDIR=lib \
     -DKDE_INSTALL_QTPLUGINDIR=lib/qt6/plugins -DKDE_INSTALL_QMLDIR=lib/qt6/qml \
     -DKDE_INSTALL_SYSTEMDUSERUNITDIR=lib/systemd/user \
     -DBUILD_TESTING=OFF -DBUILD_QCH=OFF "$@"
-  run ninja -C "/out/build/$s"
-  run env DESTDIR=/out/stage ninja -C "/out/build/$s" install
+  run ninja -j"${BUILD_JOBS:-2}" -C "/tmp/kde-out/build/$s"
+  run env DESTDIR=/tmp/kde-out/stage ninja -C "/tmp/kde-out/build/$s" install
 }
 
 build "bluez-qt-${KF_VER}"
 # bluedevil links bluez-qt from the stage, not from the rootfs.
-build "bluedevil-${PLASMA_VER}" -DKF6BluezQt_DIR="/out/stage/usr/lib/cmake/KF6BluezQt"
+build "bluedevil-${PLASMA_VER}" -DKF6BluezQt_DIR="/tmp/kde-out/stage/usr/lib/cmake/KF6BluezQt"
 build "libkscreen-${PLASMA_VER}"
-build "kscreen-${PLASMA_VER}" -DKF6Screen_DIR="/out/stage/usr/lib/cmake/KF6Screen"
+build "kscreen-${PLASMA_VER}" -DKF6Screen_DIR="/tmp/kde-out/stage/usr/lib/cmake/KF6Screen"
 
 # Nothing a running system needs from the headers or CMake files.
 rm -rf "$OUT/stage/usr/include" "$OUT/stage/usr/lib/cmake" "$OUT/stage/usr/lib/pkgconfig" \
