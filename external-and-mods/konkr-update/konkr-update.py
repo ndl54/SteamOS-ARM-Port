@@ -613,11 +613,20 @@ def make_plan(target, root, home, boot):
     return plan
 
 
+# Settings files our own daemons rewrite from Handheld Control (konkrd puts
+# the Pocket FIT's front buttons on controller buttons in this map, issue #64).
+# A release only changes one together with its blob; without the blob the
+# device's copy is the user's setting and stays.
+SETTINGS = tuple(p + 'inputplumber/capability_maps.d/konkr_pocketfit_sysbtn.yaml'
+                 for p in ('root/etc/', 'root/' + UPPER + '/'))
+
+
 def drop_stale_transient(plan, target, blobs, root, home):
-    """Plan deletion of stale bytecode and retain refreshed pacman databases.
+    """Plan bytecode deletion; retain refreshed databases and existing settings.
     Do not mutate the live tree or the signed target during staging."""
-    for key in [k for k in plan['write'] if is_transient(k) and target[k]['f'][4] not in blobs]:
-        # A cache name does not make a directory or a symlink safe to remove.
+    for key in [k for k in plan['write'] if (is_transient(k) or k in SETTINGS)
+                and target[k]['f'][4] not in blobs]:
+        # A cache/setting name does not make a directory or symlink safe to skip.
         # Check each parent without resolving links out of rootview/HOME.
         p = root if key.startswith('root/') else home
         parts = PurePosixPath(key).parts[1:]
@@ -631,6 +640,9 @@ def drop_stale_transient(plan, target, blobs, root, home):
             expected = stat.S_ISREG if i == len(parts) - 1 else stat.S_ISDIR
             if not expected(st.st_mode):
                 raise ValueError(f'unsafe transient path or type: {key}')
+        # A missing setting has no user copy to retain: require its blob.
+        if key in SETTINGS and st is None:
+            continue
         plan['write'].remove(key)
         plan.setdefault('skip', []).append(key)
         if PurePosixPath(key).parent.name == '__pycache__' and st is not None:
@@ -756,7 +768,7 @@ def apply2(root, boot, home, work):
         version = json.loads((work / 'transaction.json').read_text()).get('version')
     except (OSError, ValueError):
         version = None
-    # A retained runtime cache has not acquired the signed target hash. Never
+    # A retained cache or setting has not acquired the signed target hash. Never
     # seed the next plan's size/mtime shortcut with that unverified hash.
     skipped = set(plan.get('skip', []))
     record_inventory(root, home, {k: e for k, e in target.items() if k not in skipped}, version=version)
@@ -820,6 +832,15 @@ def stage2(work, package, root_info, home_info, boot_info, model, pending,
         need = {target[k]['f'][4] for k in plan['write']}
         missing = need - set(manifest['blobs'])
         if missing:
+            paths = sorted(k for k in plan['write'] if target[k]['f'][4] in missing)
+            shown = ', '.join('/' + k.split('/', 1)[1] if k.startswith('root/') else k for k in paths[:5])
+            detail = ('this system differs from the releases this update was made for '
+                      f'({", ".join(manifest.get("from") or ["?"])}): {shown}'
+                      + (f' and {len(paths) - 5} more' if len(paths) > 5 else '')
+                      + ' changed; install the full update')
+            # Keep the exact exit9/fingerprint protocol emitted after cleanup.
+            # Escape unusual signed path text so this diagnostic stays one line.
+            print('Delta details: ' + json.dumps(detail), file=sys.stderr)
             raise DeltaMismatch(manifest)
         # Full fallback can be much larger than the delta. Check HOME before
         # extracting blobs/backups; reserve room for recovery and boot copies.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Ordinary-file delta cache regressions; no mounts, builds or real updater CLI."""
+import ast
 import copy
 import importlib.util
 import json
@@ -141,6 +142,101 @@ class TransientTests(unittest.TestCase):
         self.assertEqual(set(plan['write']), set(keys))
         self.assertEqual(plan['delete'], [])
 
+
+    def test_settings_retained_without_false_hash_and_rollback(self):
+        target, plan = self.fixture(U.SETTINGS)
+        old = {'format': 2, 'version': '1.3', 'files': {}}
+        U.write_json(self.root / U.INVENTORY, old)
+        signed = copy.deepcopy(target)
+        self.drop(plan, target)
+        self.assertEqual(target, signed)
+        self.assertEqual(plan['write'], [])
+        self.assertEqual(plan['delete'], [])
+        self.save(plan, target)
+        U.backup_plan(plan, self.root, self.home, self.work)
+        U.apply2(self.root, self.boot, self.home, self.work)
+        for key in U.SETTINGS:
+            self.assertEqual(self.path(key).read_bytes(), b'drifted')
+            self.assertNotIn(key, U.recorded(self.root))
+            self.assertIn(key, U.make_plan(target, self.root, self.home, self.boot)['write'])
+        with patch.object(U, 'install_kernel'):
+            U.restore2(self.root, self.boot, self.home, self.work)
+        self.assertEqual(json.loads((self.root / U.INVENTORY).read_text()), old)
+        for key in U.SETTINGS: self.assertEqual(self.path(key).read_bytes(), b'drifted')
+
+    def test_missing_settings_and_nearby_names_require_content(self):
+        keys = (*U.SETTINGS, *(k + '.bak' for k in U.SETTINGS))
+        target, plan = self.fixture(keys)
+        for key in U.SETTINGS: self.path(key).unlink()
+        self.drop(plan, target)
+        self.assertEqual(set(plan['write']), set(keys))
+        self.assertEqual(plan.get('skip', []), [])
+
+    def test_supplied_setting_blob_updates_and_records_actual_hash(self):
+        target, plan = self.fixture(U.SETTINGS)
+        sha = target[U.SETTINGS[0]]['f'][4]
+        self.drop(plan, target, [sha])
+        self.assertEqual(set(plan['write']), set(U.SETTINGS))
+        blob = self.work / 'blobs' / sha[:2] / sha
+        blob.parent.mkdir(parents=True); blob.write_bytes(b'release')
+        self.save(plan, target)
+        U.apply2(self.root, self.boot, self.home, self.work)
+        for key in U.SETTINGS:
+            self.assertEqual(self.path(key).read_bytes(), b'release')
+            self.assertEqual(U.recorded(self.root)[key][2], sha)
+
+    def test_setting_leaf_types_fail_closed(self):
+        target, _ = self.fixture(U.SETTINGS)
+        for key in U.SETTINGS:
+            p = self.path(key); p.unlink(); p.mkdir()
+            sentinel = p / 'keep'; sentinel.write_text('keep')
+            plan = U.make_plan(target, self.root, self.home, self.boot)
+            with self.assertRaises(ValueError): self.drop(plan, target)
+            self.assertEqual(sentinel.read_text(), 'keep')
+            sentinel.unlink(); p.rmdir()
+            outside = self.tmp / 'outside'; outside.write_text('keep')
+            p.symlink_to(outside)
+            plan = U.make_plan(target, self.root, self.home, self.boot)
+            with self.assertRaises(ValueError): self.drop(plan, target)
+            self.assertEqual(outside.read_text(), 'keep')
+            p.unlink(); p.write_bytes(b'drifted')
+
+    def test_setting_parent_symlink_fails_closed(self):
+        target, _ = self.fixture(U.SETTINGS)
+        for i, key in enumerate(U.SETTINGS):
+            p = self.path(key); p.unlink(); p.parent.rmdir()
+            outside = self.tmp / f'outside-{i}'; outside.mkdir()
+            sentinel = outside / p.name; sentinel.write_text('keep')
+            p.parent.symlink_to(outside, target_is_directory=True)
+            plan = U.make_plan(target, self.root, self.home, self.boot)
+            with self.assertRaises(ValueError): self.drop(plan, target)
+            self.assertEqual(sentinel.read_text(), 'keep')
+            p.parent.unlink(); p.parent.mkdir(); p.write_bytes(b'drifted')
+
+    def test_producer_blob_selection_in_isolation(self):
+        # Extract ONLY the pure predicate and selection expression. Never import
+        # or execute the builder's CLI, filesystem, signing or package stages.
+        source = (REPO / 'scripts/build-update-v2.py').read_text()
+        tree = ast.parse(source)
+        predicate = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'rewritten')
+        selection = next(n for n in tree.body if isinstance(n, ast.Assign)
+                         and any(isinstance(t, ast.Name) and t.id == 'blobs' for t in n.targets))
+        keys = (DB, DB + '.sig', PYC, 'root/usr/bin/app',
+                'root/usr/lib/holo/pacmandb/local/pkg/desc', DB.replace('/sync/', '/sync-other/'))
+        inventory = {k: {'f': [0, 0, 0, 1, str(i), {}]} for i, k in enumerate(keys)}
+        inventory['root/usr/lib/holo/pacmandb/sync/link'] = {'l': ['elsewhere', 0, 0]}
+        base = {k: e['f'][4] for k, e in inventory.items() if 'f' in e}
+        env = {'inventory': inventory, 'bases': [base], 'stale_pyc': lambda k: k == PYC}
+        exec(ast.get_source_segment(source, predicate), env)
+        code = ast.get_source_segment(source, selection)
+        exec(code, env)
+        self.assertEqual(env['blobs'], ['0', '1', '2'])
+        env['bases'] = [base, dict(base, **{'root/usr/bin/app': 'older'})]
+        exec(code, env)
+        self.assertEqual(env['blobs'], ['0', '1', '2', '3'])
+        env['bases'] = []
+        exec(code, env)
+        self.assertEqual(env['blobs'], ['0', '1', '2', '3', '4', '5'])
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

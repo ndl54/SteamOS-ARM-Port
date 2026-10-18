@@ -309,6 +309,43 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(effects, ['mount', 'umount'])
         self.assertFalse(pending.exists())
 
+    def test_missing_setting_is_typed_and_keeps_original_target(self):
+        manifest = copy.deepcopy(MANIFEST)
+        entry = manifest['inventory'].pop('root/usr/bin/test')
+        manifest['inventory'][U.SETTINGS[0]] = entry
+        err, effects, _, pending = self.stage_fixture(manifest)
+        self.assertIsInstance(err, U.DeltaMismatch)
+        self.assertEqual(err.target, U.target_identity(manifest))
+        self.assertEqual(effects, ['mount', 'umount'])
+        self.assertFalse(pending.exists())
+
+    def test_missing_paths_diagnostic_is_bounded_and_cache_excluded(self):
+        manifest = copy.deepcopy(MANIFEST)
+        entry = manifest['inventory'].pop('root/usr/bin/test')
+        keys = [f'root/usr/bin/app-{i}' for i in range(7)]
+        manifest['inventory'] = {k: copy.deepcopy(entry) for k in reversed(keys)}
+        manifest['inventory']['root/usr/lib/holo/pacmandb/sync/core.db'] = copy.deepcopy(entry)
+        stream = io.StringIO()
+        with redirect_stderr(stream):
+            err, _, _, _ = self.stage_fixture(manifest)
+        self.assertIsInstance(err, U.DeltaMismatch)
+        lines = stream.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        detail = json.loads(lines[0].removeprefix('Delta details: '))
+        self.assertIn('(1.3)', detail)
+        for i in range(5): self.assertIn(f'/usr/bin/app-{i}', detail)
+        self.assertIn('and 2 more', detail)
+        self.assertNotIn('app-5', detail)
+        self.assertNotIn('core.db', detail)
+        self.assertEqual(err.target, U.target_identity(manifest))
+
+    def test_diagnostic_before_exact_protocol_still_allows_one_retry(self):
+        code, proc = self.apply_fixture([
+            response(9, 'Delta details: "missing paths"\n' + MISMATCH), response()])
+        self.assertEqual((code, proc.call_count), (0, 2))
+        self.assertEqual(proc.call_args_list[1].args[0][-2:],
+                         ['--expected-target', U.target_identity(MANIFEST)])
+
     def test_full_stages_only_after_checks(self):
         full = dict(MANIFEST, kind='full', blobs=[HASH])
         err, effects, work, pending = self.stage_fixture(full)
