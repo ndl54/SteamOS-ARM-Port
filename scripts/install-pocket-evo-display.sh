@@ -4,17 +4,20 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 R=${1:?usage: install-pocket-evo-display.sh ROOTFS GAMESCOPE_BUILD}
 GSBUILD=${2:?Gamescope build directory required}
-# Refuse a stale/incomplete binary before modifying the rootfs.
-python3 - "$ROOT" "$GSBUILD" <<'PY'
-import hashlib, json, sys
+# Bind the selected build to this run's source/output manifest, not an old
+# historical artifact hash. The repack exports this manifest after fresh builds.
+PROVENANCE=${COMPONENT_MANIFEST:?fresh component manifest required}
+python3 "$ROOT/scripts/pocket-evo-component-manifest.py" verify "$PROVENANCE"
+python3 - "$GSBUILD" "$PROVENANCE" <<'PYCODE'
+import json,sys
 from pathlib import Path
-repo, build = map(Path, sys.argv[1:])
-files = json.loads((repo/'docs/audit/pocket-evo-build-results.json').read_text())['gamescope_followup']['files']
-for name, expected in files.items():
-    p = build / Path(name).relative_to('build')
-    assert hashlib.sha256(p.read_bytes()).hexdigest() == expected['sha256'], p
-print('Verified final Gamescope build hashes')
-PY
+build=Path(sys.argv[1]).resolve()
+outputs=json.loads(Path(sys.argv[2]).read_text())['outputs_sha256']
+for name in ('src/gamescope','src/gamescopectl','src/gamescopereaper','src/gamescopestream','layer/libVkLayer_FROG_gamescope_wsi_aarch64.so'):
+    assert str(build/name) in outputs, 'Gamescope path absent from manifest: '+name
+print('Selected Gamescope output is covered by fresh component manifest')
+PYCODE
+
 for prefix in usr usr/local; do
   for b in gamescope gamescopectl gamescopereaper gamescopestream; do
     install -Dm755 "$GSBUILD/src/$b" "$R/$prefix/bin/$b"
