@@ -113,7 +113,7 @@ Item {
                 Rectangle {
                     Layout.preferredWidth: 46 * Ui.s; Layout.preferredHeight: 46 * Ui.s
                     radius: width / 2; color: Ui.accent
-                    Txt { anchors.centerIn: parent; text: home.media.status === "Playing" ? "⏸" : "▶"; font.pixelSize: 22 * Ui.s }
+                    Txt { anchors.centerIn: parent; text: home.media.status === "Playing" ? "⏸" : "▶"; color: Ui.onAccent; font.pixelSize: 22 * Ui.s }
                     TapHandler { onTapped: Ui.post("/media", { action: "playpause" }) }
                 }
                 Txt {

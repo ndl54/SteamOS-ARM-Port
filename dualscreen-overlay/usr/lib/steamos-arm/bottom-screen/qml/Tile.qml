@@ -147,7 +147,7 @@ Item {
         color: Ui.accent
         border.color: Ui.bg
         border.width: 5 * Ui.s
-        Txt { anchors.centerIn: parent; text: "↓"; font.pixelSize: 30 * Ui.s; font.weight: Font.Bold }
+        Txt { anchors.centerIn: parent; text: "↓"; color: Ui.onAccent; font.pixelSize: 30 * Ui.s; font.weight: Font.Bold }
     }
     // Close badge (pages that offer it; the launcher closes with a long press).
     Rectangle {

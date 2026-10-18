@@ -58,6 +58,7 @@ Item {
                     font.family: Ui.font
                     font.pixelSize: 30 * Ui.s
                     selectionColor: Ui.accent
+                    selectedTextColor: Ui.onAccent
                     onTextChanged: { np.dirty = true; autosave.restart() }
                     onCursorRectangleChanged: {
                         if (cursorRectangle.y + cursorRectangle.height > fl.contentY + fl.height)

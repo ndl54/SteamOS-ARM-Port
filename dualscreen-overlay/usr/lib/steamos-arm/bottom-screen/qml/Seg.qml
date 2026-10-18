@@ -33,7 +33,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     text: opt.modelData[1]
-                    color: opt.on ? "#ffffff" : Ui.dim
+                    color: opt.on ? Ui.contrastInk(opt.color) : Ui.dim
                     font.pixelSize: seg.fontSize * Ui.s
                     font.weight: opt.on ? Font.Bold : Font.DemiBold
                 }

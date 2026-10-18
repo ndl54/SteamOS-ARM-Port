@@ -243,6 +243,7 @@ ColumnLayout {
         Txt {
             anchors.centerIn: parent
             text: key.label
+            color: key.lit ? Ui.contrastInk(key.color) : Ui.text
             font.pixelSize: (key.label.length > 1 ? 26 : 40) * Ui.s
         }
         Txt {
@@ -251,7 +252,7 @@ ColumnLayout {
             anchors.top: parent.top
             anchors.margins: 8 * Ui.s
             text: key.hint
-            color: Ui.dim
+            color: key.lit ? Ui.contrastInk(key.color) : Ui.dim
             font.pixelSize: 18 * Ui.s
         }
         TapHandler {

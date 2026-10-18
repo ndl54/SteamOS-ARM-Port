@@ -23,6 +23,7 @@ QtObject {
     readonly property color button: theme.button || "#1a2433"
     readonly property color line: theme.line || "#243042"
     readonly property color accent: theme.accent || "#1a9fff"
+    readonly property color onAccent: contrastInk(accent)
     readonly property color accentSoft: theme.accentSoft || "#331a9fff"
     readonly property color text: theme.text || "#eef3f8"
     readonly property color dim: theme.dim || "#8a98aa"
@@ -100,6 +101,16 @@ QtObject {
         }
         x.open("GET", "file://" + file)
         x.send()
+    }
+
+    // Accent fills can be white (Pure Black) or amber (Gauges). Choose
+    // black or white ink by relative luminance, including darkened key fills.
+    function linearChannel(v) {
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+    }
+    function contrastInk(fill) {
+        var l = 0.2126 * linearChannel(fill.r) + 0.7152 * linearChannel(fill.g) + 0.0722 * linearChannel(fill.b)
+        return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "#000000" : "#ffffff"
     }
 
     function num(v, digits) { return v === undefined || v === null ? "–" : Number(v).toFixed(digits || 0) }

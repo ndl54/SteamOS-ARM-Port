@@ -266,7 +266,7 @@ Item {
                     Layout.fillHeight: true
                     radius: 24 * Ui.s
                     color: hold.active ? (pb.isFine ? Qt.darker(Ui.accent, 1.9) : Ui.cardHi) : Ui.button
-                    Txt { anchors.centerIn: parent; text: pb.modelData[1]; font.weight: Font.DemiBold }
+                    Txt { anchors.centerIn: parent; text: pb.modelData[1]; color: hold.active && pb.isFine ? Ui.contrastInk(pb.color) : Ui.text; font.weight: Font.DemiBold }
                     // Held while another finger works the pad.
                     PointHandler {
                         id: hold

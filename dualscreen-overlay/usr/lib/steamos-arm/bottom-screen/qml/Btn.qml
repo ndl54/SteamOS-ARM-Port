@@ -12,6 +12,7 @@ Rectangle {
     property real iconSize: 56
     property real fontSize: 28
     property color tint: Ui.accent
+    readonly property color ink: active ? Ui.contrastInk(b.color) : Ui.text
     property bool horizontal: false          // icon beside the label instead of above
     signal clicked()
     signal held()
@@ -34,7 +35,7 @@ Rectangle {
             source: b.icon
             implicitWidth: b.iconSize * Ui.s
             implicitHeight: b.iconSize * Ui.s
-            color: Ui.text
+            color: b.ink
             isMask: true
         }
         Txt {
@@ -42,6 +43,7 @@ Rectangle {
             Layout.maximumWidth: b.width - 16 * Ui.s - (b.horizontal && b.icon !== "" ? (b.iconSize + 14) * Ui.s : 0)
             visible: b.label !== ""
             text: b.label
+            color: b.ink
             elide: Text.ElideRight
             font.pixelSize: b.fontSize * Ui.s
             font.weight: Font.DemiBold
