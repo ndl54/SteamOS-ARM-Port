@@ -1,0 +1,60 @@
+From: hashtagbasit
+Subject: Input: goodix: keep valid Pocket S2 DT sizes on invalid config
+
+On exact ayaneo,pocket-s2, retain readable firmware sizes greater than one
+when the controller configuration is invalid. A nonzero maximum alone
+can come from corrupt chip data. Preserve already parsed inversion/swap
+metadata and update only the missing axis, on its post-swap ABS axis.
+All other boards retain the original fallback. No coordinate scaling or
+rotation is added. SM8650 does not use SM8550's Goodix scaling patch.
+
+Reviewed for source 6d2e85c88921f1855108e15c23cfca3650fc487f.
+
+--- a/drivers/input/touchscreen/goodix.c
++++ b/drivers/input/touchscreen/goodix.c
+@@ -1178,6 +1178,9 @@
+ 	touchscreen_parse_properties(ts->input_dev, true, &ts->prop);
+ 
+ 	if (!ts->prop.max_x || !ts->prop.max_y || !ts->max_touch_num) {
++		bool pocket_s2 = of_machine_is_compatible("ayaneo,pocket-s2");
++		u32 size;
++
+ 		if (!ts->reset_controller_at_probe &&
+ 		    ts->irq_pin_access_method != IRQ_PIN_ACCESS_NONE) {
+ 			dev_info(&ts->client->dev, "Config not set, resetting controller\n");
+@@ -1191,13 +1194,29 @@
+ 		dev_err(&ts->client->dev,
+ 			"Invalid config (%d, %d, %d), using defaults\n",
+ 			ts->prop.max_x, ts->prop.max_y, ts->max_touch_num);
+-		ts->prop.max_x = GOODIX_MAX_WIDTH - 1;
+-		ts->prop.max_y = GOODIX_MAX_HEIGHT - 1;
++		/* Keep only usable S2 firmware sizes, not corrupt config maxima.
++		 * Parsing has already applied inversion and axis swapping.
++		 * Other boards retain their existing fallback unchanged.
++		 */
++		if (!pocket_s2 ||
++		    device_property_read_u32(&ts->client->dev,
++					     "touchscreen-size-x", &size) || size < 2) {
++			ts->prop.max_x = GOODIX_MAX_WIDTH - 1;
++			input_abs_set_max(ts->input_dev,
++					  pocket_s2 && ts->prop.swap_x_y ?
++					  ABS_MT_POSITION_Y : ABS_MT_POSITION_X,
++					  ts->prop.max_x);
++		}
++		if (!pocket_s2 ||
++		    device_property_read_u32(&ts->client->dev,
++					     "touchscreen-size-y", &size) || size < 2) {
++			ts->prop.max_y = GOODIX_MAX_HEIGHT - 1;
++			input_abs_set_max(ts->input_dev,
++					  pocket_s2 && ts->prop.swap_x_y ?
++					  ABS_MT_POSITION_X : ABS_MT_POSITION_Y,
++					  ts->prop.max_y);
++		}
+ 		ts->max_touch_num = GOODIX_MAX_CONTACTS;
+-		input_abs_set_max(ts->input_dev,
+-				  ABS_MT_POSITION_X, ts->prop.max_x);
+-		input_abs_set_max(ts->input_dev,
+-				  ABS_MT_POSITION_Y, ts->prop.max_y);
+ 	}
+ 
+ 	if (dmi_check_system(nine_bytes_report)) {
