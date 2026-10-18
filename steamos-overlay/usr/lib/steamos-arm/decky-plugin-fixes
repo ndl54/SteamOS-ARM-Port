@@ -11,8 +11,9 @@ since it has already loaded the old code.
   the same check.
 
 It also installs the plugins the image bundles in /usr/share/steamos-arm/
-decky-plugins, which updates can't put in the home folder themselves
-(updaters before 1.3.3 only carry two plugin folders). Each bundled version
+decky-plugins, which updates can't put in the home folder themselves.
+This supports older updaters that carry only two home plugin folders;
+upstream targets 1.4 for this bundled-plugin delivery. Each bundled version
 is offered once: a plugin removed in Decky stays removed until a newer one
 comes with an update. Existing unmanaged or locally modified copies are kept.
 """
