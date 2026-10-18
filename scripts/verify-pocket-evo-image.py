@@ -145,7 +145,7 @@ def verify(root, boot, home, kernel, gamescope, inputplumber, mangohud, kde):
             path = f'/{prefix}/bin/{exe}'
             deps = subprocess.check_output(run + ['/usr/bin/ldd', '-r', path], stderr=subprocess.STDOUT, text=True)
             assert 'not found' not in deps and 'undefined symbol' not in deps, deps
-    for path in ('/usr/bin/mangoapp', '/usr/bin/inputplumber', '/usr/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so', '/usr/local/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so'):
+    for path in ('/usr/lib/liblsfg-vk-classic-arm64.so', '/usr/bin/mangoapp', '/usr/bin/inputplumber', '/usr/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so', '/usr/local/lib/libVkLayer_FROG_gamescope_wsi_aarch64.so'):
         deps = subprocess.check_output(run + ['/usr/bin/ldd', '-r', path], stderr=subprocess.STDOUT, text=True)
         assert 'not found' not in deps and 'undefined symbol' not in deps, deps
     for p in (kde/'stage').rglob('*'):
