@@ -16,16 +16,18 @@
 };
 
 /*
- * Adreno 750 top step. Mainline stops at 834 MHz; every Snapdragon 8 Gen 3
- * (and Android on this handheld) runs the A750 at 903 MHz. TURBO_L1 is the
- * fused per-chip voltage corner for it. No qcom,opp-acd-level: the GMU just
- * skips ACD for this level (a6xx_gmu_acd_probe treats -EINVAL as "none").
- * Bus vote kept equal to the 834 MHz step.
+ * Pocket FIT's 903 MHz OPP: match the TURBO corner and ACD value in the
+ * pinned ROCKNIX sm8650-ayaneo-common.dtsi. That shared table also contains
+ * 1.0 and 1.05 GHz OPPs, so this is not a maximum-frequency cap. The ACD
+ * property was already inherited; spelling it out here preserves it.
+ * Bus vote stays equal to the 834 MHz step. Factory voltage, stability and
+ * power/temperature savings have not been independently verified on hardware.
  */
 &gpu_opp_table {
 	opp-903000000 {
 		opp-hz = /bits/ 64 <903000000>;
-		opp-level = <RPMH_REGULATOR_LEVEL_TURBO_L1>;
+		opp-level = <RPMH_REGULATOR_LEVEL_TURBO>;
 		opp-peak-kBps = <14398437>;
+		qcom,opp-acd-level = <0x882a5ffd>;
 	};
 };
