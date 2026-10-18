@@ -38,6 +38,8 @@ import sys
 import threading
 import time
 
+from stick_sleep import awake_only
+
 # Steam's TDP slider and manual GPU clock, on top of the profile (shared with
 # the other device daemon).
 sys.path.insert(0, "/usr/lib/steamos-arm")
@@ -802,6 +804,7 @@ class Leds:
             return self._blend([(40, (0, 120, 255)), (60, (255, 170, 0)), (80, (255, 20, 0))], t)
         return None
 
+    @awake_only
     def apply_sticks(self, st: dict) -> None:
         cfg = st["rgb"]
         mode = cfg.get("mode", "static")
@@ -1476,6 +1479,8 @@ class Daemon:
                 p = self.st["profile"]
                 self.fan.tick(p, game_fan(self.st), os.path.exists(STANDBY_FLAG))
                 self.leds.tick(self.st.get("power_led", True))
+                if getattr(self.leds, "sticks_pending", False):
+                    self.leds.apply_sticks(self.st)
                 # Battery/heat light modes follow the device every 10 s.
                 if now >= next_live and not os.path.exists(STANDBY_FLAG):
                     next_live = now + 10.0

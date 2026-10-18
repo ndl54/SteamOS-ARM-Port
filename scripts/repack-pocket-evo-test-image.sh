@@ -74,7 +74,9 @@ install -m644 "$output/System.map-$krel" "${mnt}/root/usr/lib/modules/$krel/Syst
 for entry in \
   steamos-overlay/usr/lib/steamos/sm8550-audio-pipewire \
   steamos-overlay/usr/lib/steamos-arm/steamos-arm-wifi-wake \
-  sm8650-overlay/usr/lib/konkr/konkr-sleep; do
+  sm8650-overlay/usr/lib/konkr/konkr-sleep \
+  sm8650-overlay/usr/lib/konkr/stick_sleep.py \
+  sm8650-overlay/usr/lib/konkr/konkrd; do
   dest=${entry#*/}
   install -m755 "/src/$entry" "${mnt}/root/$dest"
   cmp "/src/$entry" "${mnt}/root/$dest"
@@ -92,6 +94,7 @@ cp /src/sm8550-overlay/etc/inputplumber/capability_maps.d/*.yaml "${mnt}/root/us
 bash /src/scripts/install-pocket-evo-platform.sh "${mnt}/root"
 install -m755 /src/external-and-mods/kernel-common/initramfs/bootdebug "${mnt}/root/usr/lib/steamos-arm/bootdebug"
 bash /src/scripts/install-pocket-evo-led.sh "${mnt}/root"
+install -m644 /src/sm8650-overlay/usr/lib/systemd/system/konkr-sleep.service "${mnt}/root/usr/lib/systemd/system/konkr-sleep.service"
 bash /src/scripts/install-pocket-evo-sleep.sh "${mnt}/root"
 plugin=/src/external-and-mods/Decky/sm8650/konkr-control
 for dest in "${mnt}/root/usr/share/steamos-odin/decky-plugins/konkr-control" "${mnt}/home/steamos/homebrew/plugins/konkr-control"; do
@@ -123,6 +126,9 @@ files = [
  'usr/lib/steamos/sm8550-audio-pipewire',
  'usr/lib/steamos-arm/steamos-arm-wifi-wake',
  'usr/lib/konkr/konkr-sleep',
+ 'usr/lib/konkr/stick_sleep.py',
+ 'usr/lib/konkr/konkrd',
+ 'usr/lib/systemd/system/konkr-sleep.service',
  'usr/lib/pocketevo/pocket_evo_led.py',
  'usr/lib/pocketevo/pocket-evo-sleep',
  'usr/lib/pocketevo/pocket-evo-usb-sleep',

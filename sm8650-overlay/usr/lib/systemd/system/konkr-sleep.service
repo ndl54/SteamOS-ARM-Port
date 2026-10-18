@@ -10,6 +10,8 @@ RemainAfterExit=yes
 ExecCondition=/bin/sh -c '[ "$(/usr/lib/konkr/sleep-mode)" = s2idle ]'
 ExecStart=/usr/lib/konkr/konkr-sleep pre
 ExecStop=/usr/lib/konkr/konkr-sleep post
+# Also restore if preparation times out/fails before ExecStop is eligible.
+ExecStopPost=/usr/bin/python3 /usr/lib/konkr/stick_sleep.py post
 TimeoutSec=30
 
 [Install]

@@ -180,8 +180,13 @@ light() {
 wifi_mark() { /usr/lib/steamos-arm/steamos-arm-wifi-wake mark; }
 wifi_watch_start() { /usr/lib/steamos-arm/steamos-arm-wifi-wake start; }
 
+# Snapshot/blank under the daemon's LED lock before any slow preparation.
+lights_off() { /usr/bin/python3 /usr/lib/konkr/stick_sleep.py pre; }
+lights_on() { /usr/bin/python3 /usr/lib/konkr/stick_sleep.py post; }
+
 pre() {
   local n u x
+  lights_off
   report_start
   wifi_mark
   x=$(xhci_off)
@@ -223,6 +228,7 @@ touch_on() {
 }
 
 post() {
+  lights_on
   report_end
   ufs_on
   xhci_on
