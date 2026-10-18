@@ -1,0 +1,65 @@
+Subject: [PATCH] input: qcom-hv-haptics: validate LRA calibration divisors
+
+Integration review of a9f54077f0e00c25d630f46c46808443e802d5fd enables the
+LRA path on Thor/RP6/Nova. Missing boot calibration can leave cl_t_lra_us
+zero even after the open-loop setup succeeds. The boot recovery loop then
+divides by zero; the calibration reader also divides by unchecked status
+values in its AUTO branches.
+
+Reject zero status divisors, route unavailable/failed calibration through
+the existing bounded retry/fallback policy, and propagate a failed fallback
+write before recording it as configured. Valid calibration and ERM behavior
+are unchanged. This is a source-level repair, not hardware validation.
+
+---
+--- a/drivers/input/misc/qcom-hv-haptics.c
++++ b/drivers/input/misc/qcom-hv-haptics.c
+@@ -1177,6 +1177,10 @@
+ 		dev_dbg(chip->dev, "tlra_ol = %#x, tlra_cl_err_sts = %#x, cal_tlra_cl_sts = %#x\n",
+ 				tlra_ol, tlra_cl_err_sts, cal_tlra_cl_sts);
+ 
++		/* Reject missing calibration data before using it as a divisor. */
++		if (!cal_tlra_cl_sts || !tlra_ol)
++			return -EINVAL;
++
+ 		tmp = tlra_cl_err_sts * tlra_ol;
+ 		tmp *= TLRA_AUTO_RES_ERR_AUTO_CAL_STEP_PSEC;
+ 		tmp = div_u64(tmp, cal_tlra_cl_sts);
+@@ -1212,6 +1216,9 @@
+ 
+ 		dev_dbg(chip->dev, "last_good_tlra_cl_sts = %#x, cal_tlra_cl_sts = %#x\n",
+ 				last_good_tlra_cl_sts, cal_tlra_cl_sts);
++
++		if (!cal_tlra_cl_sts || !last_good_tlra_cl_sts)
++			return -EINVAL;
+ 
+ 		tmp = last_good_tlra_cl_sts * last_good_tlra_cl_sts;
+ 		tmp *= TLRA_AUTO_RES_AUTO_CAL_STEP_PSEC;
+@@ -3395,12 +3402,15 @@
+ 	if (rc < 0)
+ 		return rc;
+ 	// Workaround for b/339117433 since we can't reproduce it
+-	cl_f_lra = USEC_PER_SEC / chip->config.cl_t_lra_us;
++	/* Missing boot calibration must enter recovery, not divide by zero. */
++	cl_f_lra = chip->config.cl_t_lra_us ?
++		USEC_PER_SEC / chip->config.cl_t_lra_us : 0;
+ 	dev_info(chip->dev, "lra frequency detected at boot: %d Hz\n", cl_f_lra);
+ 	while ((cl_f_lra < LRA_SPEC_MIN_FREQUENCY || cl_f_lra > LRA_SPEC_MAX_FREQUENCY) &&
+ 				retry < 3) {
+-		haptics_start_lra_calibrate(chip);
+-		cl_f_lra = USEC_PER_SEC / chip->config.cl_t_lra_us;
++		rc = haptics_start_lra_calibrate(chip);
++		cl_f_lra = !rc && chip->config.cl_t_lra_us ?
++			USEC_PER_SEC / chip->config.cl_t_lra_us : 0;
+ 		retry++;
+ 		dev_info(chip->dev, "frequency after [%d] calibration: %d Hz\n", retry, cl_f_lra);
+ 	}
+@@ -3409,6 +3419,8 @@
+ 			cl_f_lra > LRA_SPEC_MAX_FREQUENCY) {
+ 		// HACK: forced set the frequency
+ 		rc = haptics_config_openloop_lra_period(chip, LRA_SPEC_DEFAULT_PERIOD_US);
++		if (rc < 0)
++			return rc;
+ 		chip->config.cl_t_lra_us = LRA_SPEC_DEFAULT_PERIOD_US;
+ 		dev_err(chip->dev,
+ 			"lra frequency is still out of range, forced set to %d Hz, ret: %d\n",

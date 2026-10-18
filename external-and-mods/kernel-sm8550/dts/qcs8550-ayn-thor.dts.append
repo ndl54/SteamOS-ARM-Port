@@ -51,3 +51,14 @@
 &display_panel {
 	steamos-arm,dither-8bpc;
 };
+
+/*
+ * Select LRA mode and the 1300 mV setting attributed by upstream to stock
+ * Thor. The shared AYN tree uses ERM/5000 mV; deleting use-erm selects
+ * sine drive and auto-resonance in the haptics driver. Motor response and
+ * stock calibration still require device validation.
+ */
+&pm8550b_hv_haptics {
+	/delete-property/ qcom,use-erm;
+	qcom,vmax-mv = <1300>;
+};
