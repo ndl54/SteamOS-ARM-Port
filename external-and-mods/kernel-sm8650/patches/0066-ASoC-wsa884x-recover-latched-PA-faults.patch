@@ -24,8 +24,6 @@ PA_FSM_CTL0 bit 4, GLOBAL_PA_EN on. The check only reads while the
 device is already runtime-active. Other fault signatures are not reset.
 Serialize recovery with mute; drain work before stream teardown and before
 regmap/regulator devres cleanup. Use a freezable queue across system sleep.
-
-Developed with Claude Opus 5.5 (Anthropic) via Claude Code.
 ---
 
 -rw-r--r-- 1 root root 110104 01:01 sound/soc/codecs/wsa884x.o
