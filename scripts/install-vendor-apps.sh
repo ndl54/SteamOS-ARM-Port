@@ -44,6 +44,9 @@ share_ufs="$R/usr/share/easy-ufs-install"
 rm -rf "$share_ufs"
 mkdir -p "$share_ufs"
 cp -a "${MOD}/ufs-install/." "$share_ufs/"
+# pkexec trusts these fixed paths: do not preserve a checkout user as owner.
+chown -R 0:0 "$share_ufs"
+chmod -R go-w "$share_ufs"
 chmod 0755 "$share_ufs/"*.sh "$share_ufs/"*.py 2>/dev/null || true
 cat >"$bin/easy-ufs-installer" <<'EOF'
 #!/bin/bash
@@ -61,6 +64,11 @@ EOF
     ln -sfn "${s}.sh" "$bin/${s}" || true
   fi
 done
+# The app runs the installer and its probe through pkexec. SteamOS has no
+# password by default: only the read-only probe is passwordless. The installer
+# retains administrator authentication until its complete write surface is hardened.
+install -o 0 -g 0 -Dm0644 "${MOD}/ufs-install/polkit/org.steamos-arm.easy-ufs-install.policy" \
+  "$R/usr/share/polkit-1/actions/org.steamos-arm.easy-ufs-install.policy"
 # restore / inspect: `sudo ufs-partition.py restore --backup …` (printed by the installer)
 for s in ufs-partition ufs-bootimg; do
   ln -sfn /usr/share/easy-ufs-install/${s}.py "$bin/${s}.py"

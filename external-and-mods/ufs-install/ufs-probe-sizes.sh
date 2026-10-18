@@ -41,3 +41,14 @@ if (( tablet )); then
 else
   echo "RUNNING_FROM_SD=$([[ $root_disk == /dev/mmcblk* ]] && echo 1 || echo 0)"
 fi
+
+# Installed is a layout observation, not proof of an interrupted install.
+resume_safe=0
+if [[ $(get MODE) == installed ]]; then
+  if resume_error="$(python3 "$HERE/ufs-resume-check.py" "$disk" "$(get TABLE_FINGERPRINT)" 2>&1)"; then
+    resume_safe=1
+  else
+    printf 'RESUME_ERROR=%s\n' "${resume_error//$'\n'/ }"
+  fi
+fi
+echo "RESUME_SAFE=$resume_safe"

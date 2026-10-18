@@ -65,9 +65,13 @@ case "$HOME_MODE" in all|essentials|none) ;; *) die "--home all|essentials|none"
 
 # ------------------------------------------------------------ preflight ----
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
-for t in sfdisk mkfs.vfat mkfs.ext4 rsync findmnt lsblk python3 md5sum blockdev; do
+for t in mktemp flock sfdisk mkfs.vfat mkfs.ext4 rsync findmnt lsblk python3 md5sum blockdev; do
   command -v "$t" >/dev/null || die "missing tool: $t"
 done
+
+# Serialize installer instances; this advisory lock cannot stop other storage tools.
+exec 9>/run/easy-ufs-install.lock
+flock -n 9 || die "another UFS installation is running"
 
 # TABLET: a Lenovo tablet booted by its own bootloader, running from our image
 # on a USB drive (no ROCKNIX ABL, no microSD slot): its boot files go to the
@@ -135,6 +139,12 @@ case "$P_MODE" in
 esac
 [[ -z "$EXPECT" || "$EXPECT" == "$P_TABLE_FINGERPRINT" ]] \
   || die "the partition table changed since it was checked; check again"
+
+# Retry must not erase a tablet's only stock boot backup or trust labels alone.
+if (( RESUME )); then
+  [[ -z "$TABLET" ]] || die "tablet reinstall is disabled; preserve stock boot backups"
+  python3 "$HERE/ufs-resume-check.py" "$DISK" "$P_TABLE_FINGERPRINT"
+fi
 
 part_of() {   # GPT name -> /dev node on $DISK, read from the table (not udev)
   "${PART[@]}" detect --disk "$DISK" --storage-gib "$STORAGE_GB" | sed -n "s/^NODE_$1=//p"
@@ -241,6 +251,9 @@ if (( ! FORCE )); then
 fi
 
 # --------------------------------------------------------------- execute ---
+# Private mountpoints avoid stale directories or concurrent instances sharing WORK.
+umask 077
+WORK="$(mktemp -d /run/ufs-install.XXXXXX)"
 mounted=()
 cleanup() {
   local i rc=0
@@ -368,6 +381,10 @@ for p in "$RK" "$ST" "$HM"; do
   if findmnt -rno TARGET -S "$p" >/dev/null; then die "$p is mounted; unmount it first"; fi
 done
 
+# Revalidate after planning/confirmation and immediately before destructive work.
+if (( RESUME )); then
+  python3 "$HERE/ufs-resume-check.py" "$DISK" "$P_TABLE_FINGERPRINT"
+fi
 log "formatting"
 mkfs.vfat -F 32 -S "$P_SECTOR_SIZE" -n ROCKNIX "$RK" >/dev/null
 mkfs.ext4 -F -q -L STORAGE -m 1 "$ST"
@@ -461,7 +478,11 @@ fi
 echo "  - Power off and take out the SD card. In the ABL menu (hold Volume Down at power-on),"
 echo "    set Boot source to Internal, then boot Linux. With Boot source on SD it stops at"
 echo "    \"no volumes match boot source\"."
-echo "  - Android: pick it in the ABL menu; it sets itself up again (userdata was erased)."
+if (( RESUME )); then
+  echo "  - Android userdata and its partition size were left unchanged."
+else
+  echo "  - Android: pick it in the ABL menu; it sets itself up again (userdata was erased)."
+fi
 if (( ! RESUME )); then
   echo "  - Old partition table: $BACKUP_DIR on the SD card (a copy is in /home/.ufs-backup)."
   echo "    To give the space back to Android, boot the SD card and run:"

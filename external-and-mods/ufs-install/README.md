@@ -37,6 +37,25 @@ You pick how much of the SD's `/home` comes along:
 
 Use **SteamOS Update** for an existing installation. The installer’s `--resume` option resumes a failed initial deployment by formatting boot, system and HOME again. It erases internal Linux games, saves and account data before copying the selected SD data. It is not an in-place update or a data-preserving repair.
 
+The desktop app offers **Erase and install again** only when the read-only
+retry checks accept the current storage. An `installed` layout does not tell us
+whether installation finished: this also erases a working installation, including
+internal backup files. Copy needed saves and backups elsewhere first. Partition
+sizes stay unchanged; the 16 GiB Android minimum applies to new installs only.
+
+Retry currently requires an explicitly supported handheld, direct SD root and
+SD boot partition, physical Qualcomm UFS, a complete non-overlapping three-partition
+layout, matching GPT/kernel geometry, and no mounts, swap, holders or loop mappings
+on the target. It refuses tablet retry because HOME can contain the only stock
+Android boot backup. Unknown, legacy and partially partitioned layouts need manual
+inspection; do not remove partitions just to bypass a refused check.
+
+The packaged read-only probe is passwordless for an active local session.
+Installation and reinstallation still require administrator authentication (set a
+password with `passwd` first). Passwordless writes are intentionally deferred:
+the installer also exposes fresh partitioning, Android metadata erasure and tablet
+boot-image writes, and its full write surface is not yet hardened for that grant.
+
 ## Layout
 
 ```
