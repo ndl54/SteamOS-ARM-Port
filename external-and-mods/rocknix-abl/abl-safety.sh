@@ -2,7 +2,7 @@
 # Inlined into each shipped script: no runtime sourcing, $0 or caller PATH.
 PATH=/system/bin:/system/xbin
 export PATH
-D=/sdcard/rocknix_abl
+D=
 A=/dev/block/by-name/abl_a
 B=/dev/block/by-name/abl_b
 WRITING=0
@@ -50,8 +50,38 @@ sha_of() {
   printf '%s\n' "$hash"
 }
 
+device_id_of() {
+  identity=$(stat -L -c '%t:%T' "$1") || return 1
+  case $identity in ''|*[!0-9a-f:]*|:*|*:) return 1 ;; esac
+  case $identity in *:*) ;; *) return 1 ;; esac
+  case ${identity#*:} in *:*) return 1 ;; esac
+  printf '%s\n' "$identity"
+}
+
+# Do not trust $0 or cwd: Android root tools may supply neither. Look only
+# in documented internal/card locations, and never choose the first of
+# several copies: another copy may contain the original Android backups.
+find_folder() {
+  for candidate in /sdcard/rocknix_abl /storage/*/rocknix_abl; do
+    [ -d "$candidate" ] || continue
+    present=0
+    for artifact in "$candidate"/abl_signed-*.elf "$candidate"/abl_?.img* \
+                    "$candidate"/SM*/abl_?.img*; do
+      if [ -e "$artifact" ] || [ -L "$artifact" ]; then present=1; break; fi
+    done
+    [ "$present" = 1 ] || continue
+    resolved=$(readlink -f "$candidate") || fail "cannot resolve ABL folder: $candidate"
+    [ -n "$resolved" ] && [ -d "$resolved" ] || fail "invalid ABL folder: $candidate"
+    if [ -n "$D" ] && [ "$D" != "$resolved" ]; then
+      fail "multiple ABL folders: $D and $resolved; retain all backups and independently identify this device's original folder before continuing"
+    fi
+    D=$resolved
+  done
+  [ -n "$D" ] && [ -w "$D" ] || fail "no writable rocknix_abl folder in /sdcard or /storage/*; keep the whole folder together"
+}
+
 preflight() {
-  for tool in getprop blockdev readlink sha256sum dd head wc tr mktemp cp mv rm sync; do
+  for tool in getprop blockdev readlink stat sha256sum dd head wc tr mktemp cp mv rm sync; do
     command -v "$tool" >/dev/null 2>&1 || fail "Android tool missing: $tool"
   done
   # A bare root-tool shell may have no PATH or a meaningless $0. Use the
@@ -62,10 +92,10 @@ preflight() {
   for m in @MODELS@; do [ "$model" = "$m" ] && matched=1; done
   [ -n "$platform" ] && [ "$platform" = "@PLATFORM@" ] && matched=1
   [ "$matched" = 1 ] || fail "this folder is for @SOC@; Android reports '$model' / '$platform'"
-  [ -d "$D" ] && [ -w "$D" ] || fail "copy the folder to $D first"
+  find_folder
   for slot in a b; do
-    for old in "$D/@SOC@/abl_$slot.img" "$D/@SOC@/abl_$slot.img.sha256"; do
-      [ ! -e "$old" ] && [ ! -L "$old" ] || fail "legacy backup in $D/@SOC@: keep it for independent verification/recovery before using the flat folder"
+    for old in "$D"/SM*/abl_$slot.img "$D"/SM*/abl_$slot.img.sha256; do
+      [ ! -e "$old" ] && [ ! -L "$old" ] || fail "legacy backup at $old: keep it for independent verification/recovery before using the flat folder"
     done
   done
   for part in "$A" "$B"; do
@@ -74,6 +104,10 @@ preflight() {
   real_a=$(readlink -f "$A") || fail "cannot resolve abl_a"
   real_b=$(readlink -f "$B") || fail "cannot resolve abl_b"
   [ -n "$real_a" ] && [ -n "$real_b" ] && [ "$real_a" != "$real_b" ] || fail "ABL slots must be distinct"
+  # Different node paths may still refer to the same block major:minor.
+  id_a=$(device_id_of "$A") || fail "cannot identify abl_a"
+  id_b=$(device_id_of "$B") || fail "cannot identify abl_b"
+  [ "$id_a" != "$id_b" ] || fail "ABL slots refer to the same block device"
   size_a=$(blockdev --getsize64 "$A") || fail "cannot size abl_a"
   size_b=$(blockdev --getsize64 "$B") || fail "cannot size abl_b"
   positive_size "$size_a" && positive_size "$size_b" || fail "invalid ABL partition size"
@@ -83,7 +117,7 @@ preflight() {
 check_backups() {
   for slot in a b; do
     img=$D/abl_$slot.img
-    [ -f "$img" ] && [ -f "$img.sha256" ] || fail "incomplete or legacy backup: keep all existing files; verified .img and .img.sha256 pairs are required"
+    [ -f "$img" ] && [ ! -L "$img" ] && [ -f "$img.sha256" ] && [ ! -L "$img.sha256" ] || fail "incomplete, linked or legacy backup: keep all existing files; regular .img and .img.sha256 pairs are required"
     size=$(file_size "$img") || fail "cannot size backup $slot"
     case $slot in a) capacity=$size_a ;; b) capacity=$size_b ;; esac
     [ "$size" = "$capacity" ] || fail "backup $slot is not a full partition image"

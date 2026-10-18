@@ -2,6 +2,7 @@
 # Put ROCKNIX ABL @VERSION@ (@SOC@) on both ABL slots.
 # The stager inlines abl-safety.sh above this body in the shipped script.
 preflight
+[ -f "$D/abl_signed-@SOC@.elf" ] && [ ! -L "$D/abl_signed-@SOC@.elf" ] || fail "ABL image must be a regular, non-symlink file in $D"
 cp "$D/abl_signed-@SOC@.elf" "$WORK/new.elf" || fail "missing or unreadable ABL image"
 actual=$(sha_of "$WORK/new.elf") || fail "cannot hash ABL image"
 [ "$actual" = "@SHA256@" ] || fail "ABL image differs from the pinned release; copy the folder again"

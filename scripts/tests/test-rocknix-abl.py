@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'external-and-mods/rocknix-abl'
 IMAGE = b'synthetic-ABL-image\x00' * 8
 SOCPARAMS = {
+    'SM8250': ('SM8250', 'kona'),
     'SM8550': ('SM8550 QCS8550', 'kalama'),
     'SM8650': ('SM8650', 'pineapple'),
     'SM8750': ('SM8750 CQ8725S', 'sun'),
@@ -42,6 +43,10 @@ elif cmd == 'blockdev':
     assert args[0]=='--getsize64'
     print(path(args[1]).stat().st_size)
 elif cmd == 'readlink': print(path(args[1]))
+elif cmd == 'stat':
+    assert args[:3]==['-L','-c','%t:%T']
+    p=path(args[3])
+    print(os.environ.get('DEVICE_ID', '8:1' if p.name=='abl_a' else '8:2'))
 elif cmd == 'sha256sum': print(hashlib.sha256(path(args[0]).read_bytes()).hexdigest()+'  '+args[0])
 elif cmd == 'wc': print(len(sys.stdin.buffer.read()))
 elif cmd == 'tr': sys.stdout.write(''.join(sys.stdin.read().split()))
@@ -81,7 +86,7 @@ else: raise AssertionError(('UNMOCKED COMMAND',cmd,args))
 
 class AblTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='abl safety ')
+        self.tmp = tempfile.TemporaryDirectory(prefix="abl safety ' $ ` \\ ")
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         self.folder = self.root/'sdcard'/'rocknix_abl'
@@ -92,7 +97,7 @@ class AblTests(unittest.TestCase):
         for slot, data in self.original.items(): (self.devices/f'abl_{slot}').write_bytes(data)
         self.bin = self.root/'bin'
         self.bin.mkdir()
-        for tool in ('getprop','blockdev','readlink','sha256sum','dd','head','wc','tr','mktemp','cp','mv','rm','sync'):
+        for tool in ('getprop','blockdev','readlink','stat','sha256sum','dd','head','wc','tr','mktemp','cp','mv','rm','sync'):
             p=self.bin/tool
             p.write_text('#!'+sys.executable+'\n'+MOCK)
             p.chmod(0o755)
@@ -109,8 +114,9 @@ class AblTests(unittest.TestCase):
         self.assertEqual(text.count('PATH=/system/bin:/system/xbin'),1)
         self.assertEqual(text.count('[ -b "$part" ]'),1)
         text=text.replace('PATH=/system/bin:/system/xbin','PATH='+shlex.quote(str(self.bin)))
-        for key,value in [('D=/sdcard/rocknix_abl',self.folder),
-                          ('A=/dev/block/by-name/abl_a',self.devices/'abl_a'),
+        text=text.replace('/sdcard/rocknix_abl',shlex.quote(str(self.root/'sdcard'/'rocknix_abl')))
+        text=text.replace('/storage/*/rocknix_abl',shlex.quote(str(self.root/'storage'))+'/*/rocknix_abl')
+        for key,value in [('A=/dev/block/by-name/abl_a',self.devices/'abl_a'),
                           ('B=/dev/block/by-name/abl_b',self.devices/'abl_b')]:
             self.assertEqual(text.count(key),1)
             text=text.replace(key,key[:2]+shlex.quote(str(value)))
@@ -119,7 +125,14 @@ class AblTests(unittest.TestCase):
         self.assertNotIn('/dev/',text)
         self.assertNotIn('D=/sdcard/',text)
         (self.folder/f'abl_signed-{soc}.elf').write_bytes(image)
-        return text
+        return self.emit(text)
+
+    def emit(self, text):
+        stager=(ROOT/'scripts/stage-rocknix-abl.sh').read_text()
+        emit='emit_script() {'+stager.split('emit_script() {',1)[1].split('\nfor s in ',1)[0]
+        r=subprocess.run(['/bin/bash','-c',emit+'\nemit_script'],input=text,text=True,capture_output=True,check=True)
+        self.assertEqual(len(r.stdout.splitlines()),2)
+        return r.stdout
 
     def run_action(self, action='flash', soc='SM8550', shell='/bin/dash', image=IMAGE, **env):
         result=subprocess.run([shell,'-c',self.render(action,soc,image),'root-tool-stdin'],
@@ -213,6 +226,12 @@ class AblTests(unittest.TestCase):
         b.unlink()
         self.assert_stopped(self.run_action())
 
+    def test_same_device_number_or_invalid_stat_stops(self):
+        for identity in ('8:1','','garbage','8:1:2',':1','8:','8'):
+            with self.subTest(identity=identity):
+                self.assert_stopped(self.run_action(DEVICE_ID=identity))
+        self.assert_stopped(self.run_action(FAIL_TOOL='stat'))
+
     def test_oversize_image_stops(self):
         self.assert_stopped(self.run_action(image=b'oversize'*300))
 
@@ -221,6 +240,93 @@ class AblTests(unittest.TestCase):
         (self.folder/'abl_signed-SM8550.elf').write_bytes(b'wrong image')
         r=subprocess.run(['/bin/dash','-c',text],cwd=self.root,env=self.env,text=True,capture_output=True,timeout=25)
         self.assert_stopped(r)
+
+    def execute_text(self, text, shell='/bin/dash', **env):
+        return subprocess.run([shell,'-c',text,'meaningless-root-tool-name'],cwd=self.root,
+            env={**self.env,**env},text=True,capture_output=True,timeout=25)
+
+    def move_to_card(self):
+        card=self.root/'storage'/"CARD ' $ ` \\ spaced"/'rocknix_abl'
+        card.parent.mkdir(parents=True)
+        self.folder.rename(card)
+        self.folder=card
+
+    def test_card_discovery_and_folder_symlink_alias(self):
+        self.move_to_card()
+        alias=self.root/'sdcard'/'rocknix_abl'
+        alias.symlink_to(self.folder,target_is_directory=True)
+        r=self.run_action()
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(len(self.writes()),2)
+        for slot,data in self.original.items():
+            self.assertEqual((self.folder/f'abl_{slot}.img').read_bytes(),data)
+
+    def test_multiple_folders_including_partial_backups_fail_closed(self):
+        card=self.root/'storage'/'CARD'/'rocknix_abl'
+        card.mkdir(parents=True)
+        old=card/'abl_a.img'; old.write_bytes(b'preserve original')
+        for action in ('flash','backup','restore'):
+            r=self.run_action(action)
+            self.assert_stopped(r)
+            self.assertIn('multiple ABL folders',r.stderr)
+            self.assertEqual(old.read_bytes(),b'preserve original')
+        old.unlink()
+        (card/'abl_signed-SM8650.elf').write_bytes(IMAGE)
+        self.assert_stopped(self.run_action())
+
+    def test_card_restore_without_release_image(self):
+        self.move_to_card()
+        self.seed_backup()
+        text=self.render('restore')
+        (self.folder/'abl_signed-SM8550.elf').unlink()
+        r=self.execute_text(text)
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(len(self.writes()),2)
+
+    def test_missing_folder_and_nonregular_or_linked_image_stop(self):
+        text=self.render('flash')
+        img=self.folder/'abl_signed-SM8550.elf'
+        img.unlink()
+        self.assert_stopped(self.execute_text(text))
+        target=self.root/'image'; target.write_bytes(IMAGE)
+        img.symlink_to(target)
+        self.assert_stopped(self.execute_text(text))
+        img.unlink(); img.mkdir()
+        self.assert_stopped(self.execute_text(text))
+
+    def test_linked_backup_and_cross_soc_legacy_backup_stop(self):
+        self.seed_backup()
+        img=self.folder/'abl_a.img'
+        target=self.root/'saved-original'; img.rename(target); img.symlink_to(target)
+        self.assert_stopped(self.run_action('restore'))
+        self.assertEqual(target.read_bytes(),self.original['a'])
+        img.unlink(); target.rename(img)
+        old=self.folder/'SM8650'/'abl_b.img'; old.parent.mkdir(); old.write_bytes(b'old')
+        self.assert_stopped(self.run_action())
+        self.assertEqual(old.read_bytes(),b'old')
+
+    def test_generated_lines_in_fresh_shells_keep_checks_and_error_status(self):
+        self.move_to_card()
+        for shell in ('/bin/dash','/bin/bash'):
+            for action in ('backup','flash','restore'):
+                with self.subTest(shell=shell,action=action):
+                    for line in self.render(action).splitlines():
+                        r=self.execute_text(line,shell=shell)
+                        self.assertEqual(r.returncode,0,r.stderr)
+            (self.root/'calls.jsonl').write_text('')
+            lines=self.render('flash').splitlines()
+            r=self.execute_text(lines[-1],shell=shell,FAIL_WRITE='a')
+            self.assert_stopped(r,1)
+            self.assertIn('Do NOT restart',r.stderr)
+
+    def test_emitter_preserves_literal_source_quotes_and_backslashes(self):
+        value="spaces ' \" $ ` \\ and $(false)"
+        body='printf \'%s\\n\' '+shlex.quote(value)+'\n'
+        generated=self.emit(body)
+        for shell in ('/bin/dash','/bin/bash'):
+            r=self.execute_text(generated,shell=shell)
+            self.assertEqual(r.returncode,0,r.stderr)
+            self.assertEqual(r.stdout,value+'\n')
 
     def test_slot_write_and_readback_failures_stop_in_order(self):
         self.seed_backup()
@@ -245,7 +351,7 @@ class AblTests(unittest.TestCase):
                 result=self.run_action(FAIL_TOOL=tool)
                 self.assert_stopped(result,2 if tool=='rm' else 1)
 
-    def test_three_chip_templates_work_with_bare_shells(self):
+    def test_four_chip_templates_work_with_bare_shells(self):
         self.seed_backup()
         for soc,(models,platform) in SOCPARAMS.items():
             for shell in ('/bin/dash','/bin/bash'):
@@ -260,7 +366,7 @@ class AblTests(unittest.TestCase):
         self.assertIn('cat "$SRC/abl-safety.sh" "$SRC/$s.sh" | fill',text)
         self.assertIn('s|@SHA256@|$want|g',text)
         # Execute just the actual pure text fill function, never staging.
-        fill=text.split('fill() {',1)[1].split('\nfor s in ',1)[0]
+        fill=text.split('fill() {',1)[1].split('\nemit_script() {',1)[0]
         for soc,(models,platform) in SOCPARAMS.items():
             release=dict(line.split('=',1) for line in (SRC/'release.env').read_text().splitlines() if line.startswith('ABL_'))
             variables={'soc':soc,'models':models,'platform':platform,'ABL_VERSION':release['ABL_VERSION'],
@@ -271,8 +377,10 @@ class AblTests(unittest.TestCase):
                 r=subprocess.run(['/bin/bash','-c',script],input=source,text=True,capture_output=True,check=True)
                 self.assertNotIn('@',r.stdout)
                 self.assertTrue(r.stdout.startswith('#!/system/bin/sh\n'))
+                generated=self.emit(r.stdout)
                 for shell in ('/bin/dash','/bin/bash'):
                     subprocess.run([shell,'-n'],input=r.stdout,text=True,check=True)
+                    subprocess.run([shell,'-n'],input=generated,text=True,check=True)
 
 
 if __name__ == '__main__': unittest.main()

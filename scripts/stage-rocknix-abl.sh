@@ -37,11 +37,10 @@ elf=$(find "$tmp" -name "abl_signed-$soc.elf" | head -1)
 [[ -f $elf ]] || die "abl_signed-$soc.elf not in the release"
 [[ "$(sha256sum "$elf" | cut -d' ' -f1)" == "$want" ]] || die "abl_signed-$soc.elf hash mismatch"
 
-# Flat, like ROCKNIX's own image: users copy the folder to /sdcard and the
-# scripts use /sdcard/rocknix_abl directly. Android's "run script as root"
-# runs them with a bare shell. Inline the safety helpers so the generated
-# scripts need neither a meaningful $0 nor runtime sourcing. They establish
-# Android's system PATH themselves before checking chip/partition access.
+# Flat card/internal folder discovery and safety helpers are inlined. Emit
+# the entire action as one physical shell line for root tools that start a
+# fresh shell for each line. printf reconstructs only bundled literal source;
+# no runtime file is sourced and no checks are split into separate processes.
 out=$BOOT/rocknix_abl
 # Do not recursively delete an existing folder: it may hold original ABL
 # backups (including backups in the former per-SoC layout).
@@ -51,8 +50,17 @@ echo "$want  abl_signed-$soc.elf" > "$out/abl_signed-$soc.elf.sha256"
 fill() { sed -e "s|@SOC@|$soc|g" -e "s|@PLATFORM@|$platform|g" -e "s|@MODELS@|$models|g" \
              -e "s|@VERSION@|$ABL_VERSION|g" -e "s|@DEVICES@|$devices|g" \
              -e "s|@SHA256@|$want|g"; }
+emit_script() {
+  printf '%s\n' '#!/system/bin/sh'
+  printf '%s' 'eval "$(printf '\''%s\n'\'''
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line//\'/\'\\\'\'}
+    printf " '%s'" "$line"
+  done
+  printf '%s\n' ')"'
+}
 for s in flash_abl backup_abl restore_abl; do
-  cat "$SRC/abl-safety.sh" "$SRC/$s.sh" | fill > "$out/$s.sh"
+  cat "$SRC/abl-safety.sh" "$SRC/$s.sh" | fill | emit_script > "$out/$s.sh"
 done
 fill < "$SRC/README.txt" | sed 's/$/\r/' > "$out/README.txt"
 grep -q '@' "$out"/*.sh && die "unfilled placeholder in the scripts"
