@@ -1,0 +1,86 @@
+From: hashtagbasit
+Subject: Input: goodix: keep the DT size when the config is invalid
+
+The Pocket S 2K GT911 can report an invalid contact count. Keep its
+explicit 1440x2560 firmware dimensions instead of replacing them with
+4096x4096. For axes without a readable, usable size property, retain the
+old default; a nonzero controller maximum alone is not a firmware size.
+Preserve already parsed inversion/swap metadata, updating only the axis
+that actually falls back.
+
+The preceding ROCKNIX patch scales shared 2K controller coordinates for
+the 1080p variant. Clear that ratio before each config read and do not
+activate it for zero native dimensions, which would divide by zero.
+Keep its existing nonzero ratios and oversized-config heuristic.
+
+Reviewed for source a23688573ab94bd4103b5d86adb42dc4e46bd49a.
+
+--- a/drivers/input/touchscreen/goodix.c
++++ b/drivers/input/touchscreen/goodix.c
+@@ -1049,6 +1049,10 @@
+ 	int x_max, y_max;
+ 	int error;
+ 
++	/* A retry or failed read must not reuse an earlier scaling ratio. */
++	ts->scale_to_x = 0;
++	ts->scale_to_y = 0;
++
+ 	/*
+ 	 * On controllers where we need to upload the firmware
+ 	 * (controllers without flash) ts->config already has the config
+@@ -1080,7 +1084,7 @@
+ 	 * the DT panel resolution, and store parameters for runtime
+ 	 * coordinate scaling.
+ 	 */
+-	if (!ts->firmware_name) {
++	if (!ts->firmware_name && x_max && y_max) {
+ 		u32 dt_x = 0, dt_y = 0;
+ 		struct device *dev = &ts->client->dev;
+ 
+@@ -1219,6 +1223,8 @@
+ 	touchscreen_parse_properties(ts->input_dev, true, &ts->prop);
+ 
+ 	if (!ts->prop.max_x || !ts->prop.max_y || !ts->max_touch_num) {
++		u32 size;
++
+ 		if (!ts->reset_controller_at_probe &&
+ 		    ts->irq_pin_access_method != IRQ_PIN_ACCESS_NONE) {
+ 			dev_info(&ts->client->dev, "Config not set, resetting controller\n");
+@@ -1232,13 +1238,31 @@
+ 		dev_err(&ts->client->dev,
+ 			"Invalid config (%d, %d, %d), using defaults\n",
+ 			ts->prop.max_x, ts->prop.max_y, ts->max_touch_num);
+-		ts->prop.max_x = GOODIX_MAX_WIDTH - 1;
+-		ts->prop.max_y = GOODIX_MAX_HEIGHT - 1;
++		/*
++		 * Keep only explicit, usable firmware sizes. Nonzero maxima
++		 * can also come from the invalid controller config. Properties
++		 * have already applied inversion and swapping to the ABS axes;
++		 * leave those axes alone when their firmware size is valid.
++		 */
++		if (device_property_read_u32(&ts->client->dev,
++					     "touchscreen-size-x", &size) ||
++		    size < 2) {
++			ts->prop.max_x = GOODIX_MAX_WIDTH - 1;
++			input_abs_set_max(ts->input_dev,
++					  ts->prop.swap_x_y ? ABS_MT_POSITION_Y :
++							      ABS_MT_POSITION_X,
++					  ts->prop.max_x);
++		}
++		if (device_property_read_u32(&ts->client->dev,
++					     "touchscreen-size-y", &size) ||
++		    size < 2) {
++			ts->prop.max_y = GOODIX_MAX_HEIGHT - 1;
++			input_abs_set_max(ts->input_dev,
++					  ts->prop.swap_x_y ? ABS_MT_POSITION_X :
++							      ABS_MT_POSITION_Y,
++					  ts->prop.max_y);
++		}
+ 		ts->max_touch_num = GOODIX_MAX_CONTACTS;
+-		input_abs_set_max(ts->input_dev,
+-				  ABS_MT_POSITION_X, ts->prop.max_x);
+-		input_abs_set_max(ts->input_dev,
+-				  ABS_MT_POSITION_Y, ts->prop.max_y);
+ 	}
+ 
+ 	if (dmi_check_system(nine_bytes_report)) {
