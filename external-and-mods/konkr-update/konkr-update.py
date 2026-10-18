@@ -184,6 +184,19 @@ def xattrs_of(path):
     return xattrs
 
 
+def is_transient(key):
+    """Only regenerable cache files may be omitted from a missing-blob delta."""
+    p = PurePosixPath(key)
+    if p.is_absolute() or '..' in p.parts or str(p) != key:
+        return False
+    code_roots = ('root/usr', 'root/opt', *('home/steamos/' + rel for rel in HOME_DIRS))
+    if not any(key.startswith(prefix + '/') for prefix in code_roots):
+        return False
+    return ((p.parent.name == '__pycache__' and p.suffix == '.pyc') or
+            (str(p.parent) == 'root/usr/lib/holo/pacmandb/sync' and
+             p.name.endswith(('.db', '.db.sig', '.files', '.files.sig'))))
+
+
 def walk_managed(base_of, skip_etc=False):
     """{managed path: entry}. base_of maps a managed prefix to a real directory."""
     out = {}
@@ -600,13 +613,28 @@ def make_plan(target, root, home, boot):
     return plan
 
 
-def drop_stale_pycache(plan, target, blobs, root, home):
-    """Python rewrites a .pyc whose source looks newer, so the live copy can
-    differ from the release. When the package doesn't carry it, delete it
-    instead of refusing the update: Python rebuilds it from the source."""
-    for key in [k for k in plan['write'] if '/__pycache__/' in k and target[k]['f'][4] not in blobs]:
+def drop_stale_transient(plan, target, blobs, root, home):
+    """Plan deletion of stale bytecode and retain refreshed pacman databases.
+    Do not mutate the live tree or the signed target during staging."""
+    for key in [k for k in plan['write'] if is_transient(k) and target[k]['f'][4] not in blobs]:
+        # A cache name does not make a directory or a symlink safe to remove.
+        # Check each parent without resolving links out of rootview/HOME.
+        p = root if key.startswith('root/') else home
+        parts = PurePosixPath(key).parts[1:]
+        st = None
+        for i, part in enumerate(parts):
+            p = p / part
+            try: st = os.lstat(p)
+            except FileNotFoundError:
+                st = None
+                break
+            expected = stat.S_ISREG if i == len(parts) - 1 else stat.S_ISDIR
+            if not expected(st.st_mode):
+                raise ValueError(f'unsafe transient path or type: {key}')
         plan['write'].remove(key)
-        if os.path.lexists(real_path(key, root, home)): plan['delete'].append(key)
+        plan.setdefault('skip', []).append(key)
+        if PurePosixPath(key).parent.name == '__pycache__' and st is not None:
+            plan['delete'].append(key)
     plan['delete'].sort(key=lambda k: (-k.count('/'), k))
 
 
@@ -728,7 +756,10 @@ def apply2(root, boot, home, work):
         version = json.loads((work / 'transaction.json').read_text()).get('version')
     except (OSError, ValueError):
         version = None
-    record_inventory(root, home, target, version=version)
+    # A retained runtime cache has not acquired the signed target hash. Never
+    # seed the next plan's size/mtime shortcut with that unverified hash.
+    skipped = set(plan.get('skip', []))
+    record_inventory(root, home, {k: e for k, e in target.items() if k not in skipped}, version=version)
     os.sync()
     if 'boot/KERNEL' in plan['write']: install_kernel(work / 'next-KERNEL', boot)
 
@@ -785,7 +816,7 @@ def stage2(work, package, root_info, home_info, boot_info, model, pending,
     run('mount', '--bind', '/', view)
     try:
         plan = make_plan(target, view, Path('/home'), Path('/boot'))
-        drop_stale_pycache(plan, target, set(manifest['blobs']), view, Path('/home'))
+        drop_stale_transient(plan, target, set(manifest['blobs']), view, Path('/home'))
         need = {target[k]['f'][4] for k in plan['write']}
         missing = need - set(manifest['blobs'])
         if missing:

@@ -287,6 +287,28 @@ class Fixtures(unittest.TestCase):
         self.assertFalse((work / 'rootview').exists())
         self.assertFalse(pending.exists())
 
+    def test_cache_only_missing_delta_stages_without_full_fallback(self):
+        manifest = copy.deepcopy(MANIFEST)
+        entry = manifest['inventory'].pop('root/usr/bin/test')
+        manifest['inventory']['root/usr/lib/holo/pacmandb/sync/core.db'] = entry
+        identity = U.target_identity(manifest)
+        err, effects, work, pending = self.stage_fixture(manifest)
+        self.assertIsNone(err)
+        self.assertEqual(effects, ['mount', 'backup', 'umount', 'runtime'])
+        self.assertTrue(pending.exists())
+        self.assertEqual(json.loads((work / 'target.json').read_text()), manifest['inventory'])
+        self.assertEqual(U.target_identity(manifest), identity)
+
+    def test_noncache_missing_blob_still_binds_original_target(self):
+        manifest = copy.deepcopy(MANIFEST)
+        manifest['inventory']['root/usr/lib/holo/pacmandb/sync/core.db'] = copy.deepcopy(
+            manifest['inventory']['root/usr/bin/test'])
+        err, effects, work, pending = self.stage_fixture(manifest)
+        self.assertIsInstance(err, U.DeltaMismatch)
+        self.assertEqual(err.target, U.target_identity(manifest))
+        self.assertEqual(effects, ['mount', 'umount'])
+        self.assertFalse(pending.exists())
+
     def test_full_stages_only_after_checks(self):
         full = dict(MANIFEST, kind='full', blobs=[HASH])
         err, effects, work, pending = self.stage_fixture(full)
