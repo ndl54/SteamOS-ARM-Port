@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Read-only udev hint for an idle three-partition SD after internal boot.
+
+This is NOT formatting authorization or proof that the card's data is obsolete.
+Unknown identity/activity leaves the existing udev properties untouched. Never
+unmount, repair, partition or format here; the user's formatter must independently
+validate its target and obtain destructive consent at the time of the operation.
+"""
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+
+SYS = Path('/sys/class/block')
+DEV = Path('/dev')
+PROC = Path('/proc')
+
+
+def require(ok):
+    if not ok:
+        raise ValueError('not a verified idle former system card')
+
+
+def number(value):
+    require(re.fullmatch(r'[0-9]+', value) and int(value) > 0)
+    return int(value)
+
+
+def device(name):
+    require(re.fullmatch(r'(mmcblk[0-9]+(?:p[0-9]+)?|sd[a-z]+[0-9]*)', name))
+    p = (SYS / name).resolve(strict=True)
+    require(p.name == name)
+    info = (DEV / name).stat()
+    identity = (p / 'dev').read_text().strip()
+    require(stat.S_ISBLK(info.st_mode)
+            and identity == f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}')
+    if not (p / 'partition').exists():
+        require(not list((p / 'slaves').iterdir()))
+    return p, identity
+
+
+def whole(p):
+    return device(p.parent.name)[0] if (p / 'partition').exists() else p
+
+
+def mounts():
+    result = []
+    for line in (PROC / 'self/mountinfo').read_text().splitlines():
+        left, right = line.split(' - ', 1)
+        a, b = left.split(), right.split()
+        require(len(a) >= 6 and len(b) >= 3 and re.fullmatch(r'[0-9]+:[0-9]+', a[2]))
+        result.append((a[2], a[3], a[4], b[0]))
+    require(result)
+    return result
+
+
+def internal_boot(rows):
+    # Only the actual internal-install layout is eligible. In early coldplug,
+    # absent /boot or /home deliberately refuses classification; no guessed
+    # label/source-string fallback. Overlay, loop, dm and USB roots refuse too.
+    disks = []
+    for mount, fs in (('/', 'ext4'), ('/boot', 'vfat'), ('/home', 'ext4')):
+        matches = [row for row in rows if row[2] == mount]
+        require(len(matches) == 1)
+        identity, root, _, fstype = matches[0]
+        require(root == '/' and fstype == fs)
+        node = (SYS.parent.parent / 'dev/block' / identity).resolve(strict=True)
+        p, actual = device(node.name)
+        require(p == node and identity == actual and (p / 'partition').exists())
+        disk = whole(p)
+        require(re.fullmatch(r'sd[a-z]+', disk.name))
+        require(any((ancestor / 'driver').resolve().name == 'ufshcd-qcom'
+                    for ancestor in disk.parents))
+        disks.append(disk)
+    require(len(set(disks)) == 1)
+    return disks[0]
+
+
+def path_identity(name):
+    # procfs escapes spaces, tabs, newlines and backslashes as octal sequences.
+    name = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), name)
+    require(name.startswith('/'))
+    info = Path(name).stat()
+    devno = info.st_rdev if stat.S_ISBLK(info.st_mode) else info.st_dev
+    return f'{os.major(devno)}:{os.minor(devno)}'
+
+
+def snapshot(name):
+    require(re.fullmatch(r'mmcblk[0-9]+p[1-3]', name))
+    event, _ = device(name)
+    require((event / 'partition').exists())
+    disk = whole(event)
+    require(re.fullmatch(r'mmcblk[0-9]+', disk.name))
+    require((disk / 'device/type').read_text().strip() == 'SD')
+    cid = (disk / 'device/cid').read_text().strip()
+    require(re.fullmatch(r'[0-9a-fA-F]{32}', cid))
+    seq = number((disk / 'diskseq').read_text().strip())
+    children = sorted(p.name for p in disk.iterdir() if (p / 'partition').exists())
+    require(children == [disk.name + 'p' + str(i) for i in (1, 2, 3)])
+    nodes, identities, geometry = [], set(), []
+    end = 0
+    capacity = number((disk / 'size').read_text().strip())
+    for index, child in enumerate([disk.name, *children]):
+        p, identity = device(child)
+        require(identity not in identities and whole(p) == disk)
+        require((p / 'ro').read_text().strip() == '0')
+        require(not list((p / 'holders').iterdir()))
+        size = number((p / 'size').read_text().strip())
+        if index:
+            require((p / 'partition').read_text().strip() == str(index))
+            start = number((p / 'start').read_text().strip())
+            require(start >= end and start + size <= capacity)
+            end = start + size
+        else:
+            start = 0
+        identities.add(identity)
+        nodes.append(p)
+        geometry.append((str(p), p.stat().st_ino, identity, start, size))
+    rows = mounts()
+    internal = internal_boot(rows)
+    require(internal != disk and not any(row[0] in identities for row in rows))
+    swap_lines = (PROC / 'swaps').read_text().splitlines()
+    require(swap_lines and swap_lines[0].split() == ['Filename', 'Type', 'Size', 'Used', 'Priority'])
+    for line in swap_lines[1:]:
+        fields = line.split()
+        require(len(fields) == 5 and path_identity(fields[0]) not in identities)
+    for loop in SYS.glob('loop*'):
+        backing = loop / 'loop/backing_file'
+        # An active loop with missing/inaccessible backing evidence is unknown,
+        # not idle. Unconfigured zero-size loops need no backing file.
+        if backing.exists() or int((loop / 'size').read_text().strip()) != 0:
+            require(path_identity(backing.read_text().strip()) not in identities)
+    return (str(disk), cid, seq, tuple(geometry), tuple(rows)), nodes[1:]
+
+
+def old_card(name):
+    before, parts = snapshot(name)
+    for p, label, fs in zip(parts, ('BOOT', 'root', 'home'), ('vfat', 'ext4', 'ext4')):
+        # Probe actual superblocks, not blkid's cache or a glob spanning devices.
+        output = subprocess.run(['blkid', '-p', '-o', 'export', '-s', 'LABEL', '-s', 'TYPE',
+                                 str(DEV / p.name)], check=True, capture_output=True,
+                                text=True, timeout=2).stdout
+        values = {}
+        for line in output.splitlines():
+            key, value = line.split('=', 1)
+            require(key not in values)
+            values[key] = value
+        require(values.get('LABEL') == label and values.get('TYPE') == fs)
+    after, _ = snapshot(name)
+    require(before == after)
+
+
+def main():
+    try:
+        require(len(sys.argv) == 2)
+        old_card(sys.argv[1])
+        return 0
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
