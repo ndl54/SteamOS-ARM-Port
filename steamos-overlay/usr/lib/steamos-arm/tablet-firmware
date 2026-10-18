@@ -215,6 +215,74 @@ class Mounts:
             pass
 
 
+MAX_SQUASH_SIZE = 256 * 1024 * 1024
+
+
+def squash(mdt):
+    """Join a bounded ELF32/64 split image; structure checks are not authentication."""
+    mdt = Path(mdt)
+    if mdt.is_symlink() or not mdt.is_file() or mdt.stat().st_size > MAX_SQUASH_SIZE:
+        raise ValueError("invalid or oversized MDT")
+    data = mdt.read_bytes()
+    if len(data) < 16 or data[:4] != b"\x7fELF" or data[4] not in (1, 2) or data[5:7] != b"\x01\x01":
+        raise ValueError("not a little-endian ELF32/64")
+    is64 = data[4] == 2
+    ehsize, expected = (64, 56) if is64 else (52, 32)
+    if len(data) < ehsize:
+        raise ValueError("truncated ELF header")
+    phoff = struct.unpack_from("<Q" if is64 else "<I", data, 32 if is64 else 28)[0]
+    phentsize, phnum = struct.unpack_from("<HH", data, 54 if is64 else 42)
+    end = phoff + phnum * phentsize
+    if phoff < ehsize or phentsize != expected or not 0 < phnum <= 100 or end > len(data):
+        raise ValueError("invalid ELF program headers")
+    headers = []
+    for i in range(phnum):
+        ph = phoff + i * phentsize
+        if is64:
+            _type, flags, off, _va, _pa, size, _mem, _align = struct.unpack_from("<II6Q", data, ph)
+        else:
+            _type, off, _va, _pa, size, _mem, flags, _align = struct.unpack_from("<8I", data, ph)
+        if off + size > MAX_SQUASH_SIZE:
+            raise ValueError("oversized ELF segment")
+        headers.append((off, size, flags))
+    segments = {}
+    for seg in mdt.parent.iterdir():
+        if seg.stem.lower() == mdt.stem.lower() and is_segment(seg):
+            suffix = seg.suffix.lower()
+            if suffix in segments:
+                raise ValueError("ambiguous segment casing")
+            segments[suffix] = seg
+    img = bytearray(data[:end])
+    written = [(0, end)]
+    for i, (off, size, flags) in enumerate(headers):
+        if not size:
+            continue
+        seg = segments.get(f".b{i:02d}")
+        if seg is not None:
+            if seg.is_symlink() or not seg.is_file() or seg.stat().st_size != size:
+                raise ValueError(f"invalid segment {seg.name}")
+            chunk = seg.read_bytes()
+        elif off + size <= len(data):
+            chunk = data[off:off + size]
+        elif flags & (7 << 24) == (2 << 24) and headers[0][1] + size == len(data):
+            # Qualcomm MDT can concatenate hash metadata after the header,
+            # even when its ELF p_offset points elsewhere in the full image.
+            chunk = data[headers[0][1]:]
+        else:
+            raise ValueError(f"missing {mdt.stem}.b{i:02d}")
+        if len(chunk) != size:
+            raise ValueError("segment changed size")
+        for lo, hi in written:
+            a, b = max(lo, off), min(hi, off + size)
+            if a < b and img[a:b] != chunk[a-off:b-off]:
+                raise ValueError("conflicting overlapping ELF segments")
+        if len(img) < off + size:
+            img.extend(bytes(off + size - len(img)))
+        img[off:off + size] = chunk
+        written.append((off, off + size))
+    return bytes(img)
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -234,7 +302,8 @@ def main():
     if os.geteuid() != 0:
         sys.exit("tablet-firmware: needs root")
 
-    rows = [r for r in json.load(open(a.manifest))["files"] if not r.get("generated")]
+    with open(a.manifest) as manifest_file:
+        rows = [r for r in json.load(manifest_file)["files"] if not r.get("generated")]
     sizes = {r["size"] for r in rows}
     # Searched by content; several paths can share one (the Wi-Fi's tmel.bin
     # is Bluetooth's tmel_peach_20.elf), and each of them gets written.
@@ -313,18 +382,33 @@ def main():
             os.replace(tmp, t)
             copied += 1
         renamed = 0
-        for path, srcs in byname.items():
+        for path, srcs in list(byname.items()):
             for src, rel in srcs:
                 t = dest / rel
-                if t.is_file() and t.stat().st_size == src.stat().st_size and sha256(t) == sha256(src):
+                if src.suffix.lower() == ".mdt" and rel.lower().endswith(".mbn"):
+                    try:
+                        blob = squash(src)
+                    except (OSError, ValueError, struct.error) as e:
+                        log(f"{rel}: can't join {src}: {e}")
+                        del byname[path]
+                        break
+                else:
+                    blob = None
+                if blob is None and t.is_file() and t.stat().st_size == src.stat().st_size \
+                        and sha256(t) == sha256(src):
+                    continue
+                if blob is not None and t.is_file() and t.read_bytes() == blob:
                     continue
                 t.parent.mkdir(parents=True, exist_ok=True)
                 tmp = t.with_name(t.name + ".part")
-                with open(src, "rb") as fi, open(tmp, "wb") as fo:
-                    fo.write(fi.read())
+                with open(tmp, "wb") as fo:
+                    fo.write(blob if blob is not None else src.read_bytes())
                 os.replace(tmp, t)
                 renamed += 1
-            log(f"{path}: this tablet's own copy (another Android release), from {srcs[-1][0]}")
+            else:
+                log(f"{path}: this tablet's own copy (another Android release), from {srcs[-1][0]}"
+                    + (" (joined from its split parts)" if srcs[-1][0].suffix.lower() == ".mdt"
+                       and path.lower().endswith(".mbn") else ""))
     finally:
         m.close()
 
@@ -413,31 +497,49 @@ def by_name(trees, rows, manifest):
         if is_segment(path) and str(path.with_suffix("")) in headers:
             continue
         want.setdefault(Path(r["path"]).name.lower(), []).append(r)
+    # Some releases ship only the split form (X.mdt + X.bNN) of what Linux
+    # loads as one X.mbn (the GPU's zap): take that and squash it.
+    split = {}
+    for r in rows:
+        n = Path(r["path"]).name.lower()
+        if n.endswith(".mbn"):
+            split.setdefault(n[:-4] + ".mdt", []).append(r)
     hits = {}  # name -> {tree index: [paths]}
     for i, tree in enumerate(trees):
         for root, _dirs, files in os.walk(tree):
             for fn in files:
-                if fn.lower() in want:
+                if fn.lower() in want or fn.lower() in split:
                     p = Path(root) / fn
                     if p.is_file() and not p.is_symlink():
                         hits.setdefault(fn.lower(), {}).setdefault(i, []).append(p)
     out = {}
     for name, rs in want.items():
         for r in rs:
+            if r["path"] in out:
+                continue
             hint = [x.lower() for x in Path(r["path"]).parts[:-1]]
             srcs = None
-            for i in sorted(hits.get(name, {})):
-                cands = hits[name][i]
-                if len(cands) > 1:
-                    cands = [c for c in cands if any(h in (x.lower() for x in c.parts) for h in hint)]
-                if len(cands) == 1:
+            names = [name, name[:-4] + ".mdt"] if name.endswith(".mbn") else [name]
+            for i in range(len(trees)):
+                for candidate in names:
+                    cands = hits.get(candidate, {}).get(i, [])
+                    if len(cands) > 1:
+                        cands = [c for c in cands if any(h in (x.lower() for x in c.parts) for h in hint)]
+                    if len(cands) != 1:
+                        continue
                     pick = cands[0]
                     try:
-                        srcs = (split_sources(pick, r["path"]) if pick.suffix.lower() == ".mdt"
-                                else [(pick, r["path"])])
+                        if pick.suffix.lower() == ".mdt" and name.endswith(".mbn"):
+                            squash(pick)  # reject bad active candidates before fallback
+                            srcs = [(pick, r["path"])]
+                        else:
+                            srcs = (split_sources(pick, r["path"]) if pick.suffix.lower() == ".mdt"
+                                    else [(pick, r["path"])])
                     except (OSError, ValueError, struct.error) as e:
                         log(f"{pick}: {e}; skipped")
                         continue
+                    break
+                if srcs is not None:
                     break
             if srcs is not None:
                 out[r["path"]] = srcs

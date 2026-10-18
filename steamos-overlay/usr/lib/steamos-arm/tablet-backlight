@@ -1,0 +1,40 @@
+#!/bin/bash
+# Lenovo tablets: keep the screen brightness across restarts.
+#   tablet-backlight restore | save
+# The Gen 4's backlight starts at its device tree default (511 of 4095, 12 %),
+# and the image doesn't hand backlights to systemd-backlight, so every boot
+# came up dim and Desktop Mode stayed there (Game Mode sets Steam's level).
+set -eu
+# The service condition also applies to direct invocation.
+tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | \
+  grep -qxE 'lenovo,(tb321fu|elden|baldur)' || exit 0
+case "${1:-}" in save|restore) ;; *) exit 2 ;; esac
+D=/var/lib/steamos-arm/backlight
+mkdir -p "$D"
+for bl in /sys/class/backlight/*; do
+  [ -e "$bl/brightness" ] || continue
+  n=${bl##*/}; max=$(cat "$bl/max_brightness")
+  [[ "$max" =~ ^[0-9]{1,9}$ ]] || continue
+  max=$((10#$max))
+  (( max > 0 )) || continue
+  case "$1" in
+    save)
+      cur=$(cat "$bl/brightness")
+      [[ "$cur" =~ ^[0-9]{1,9}$ ]] || continue
+      cur=$((10#$cur))
+      # Zero is a dark screen (sleep/charger), but a low nonzero user level
+      # is valid too. Publish state atomically instead of truncating it.
+      (( cur > 0 && cur <= max )) || continue
+      tmp=$(mktemp "$D/.$n.XXXXXX")
+      printf '%s\n' "$cur" >"$tmp"
+      mv -f "$tmp" "$D/$n" ;;
+    restore)
+      v=$(cat "$D/$n" 2>/dev/null || true)
+      if [[ "$v" =~ ^[0-9]{1,9}$ ]]; then v=$((10#$v)); else v=0; fi
+      (( v > 0 )) || v=$((max * 6 / 10))
+      (( v > 0 )) || v=1
+      (( v <= max )) || v=$max
+      printf '%s\n' "$v" >"$bl/brightness" ;;
+  esac
+done
+exit 0
