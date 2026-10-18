@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/hashtagbasit/SteamOS-ARM-Port/releases"><img alt="Upstream release" src="https://img.shields.io/github/v/release/hashtagbasit/SteamOS-ARM-Port?include_prereleases&style=flat&color=7c5cf0&label=upstream%20release"></a>
+  <a href="https://github.com/hashtagbasit/SteamOS-ARM-Port/releases"><img alt="Upstream release asset downloads (all releases)" src="https://img.shields.io/github/downloads/hashtagbasit/SteamOS-ARM-Port/total?style=flat&amp;color=7c5cf0&amp;label=upstream%20downloads"></a>
   <a href="https://steamos-arm-port.github.io/"><img alt="Documentation" src="https://img.shields.io/badge/docs-steamos--arm--port.github.io-18181a?style=flat"></a>
   <a href="LICENSE"><img alt="GPL-2.0 license" src="https://img.shields.io/badge/license-GPL--2.0-18181a?style=flat"></a>
   <a href="https://discord.gg/EP53nZYvg"><img alt="Discord" src="https://img.shields.io/badge/chat-Discord-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
@@ -41,8 +42,10 @@
 
 This repository maintains AYANEO Pocket EVO changes on top of
 [SteamOS ARM Port](https://github.com/hashtagbasit/SteamOS-ARM-Port).
-The release badge, website and Discord above belong to upstream; they do not
-certify a build from this fork. Pocket EVO notes cover the
+The release and downloads badges, website and Discord above belong to upstream.
+The downloads badge counts release asset downloads across all releases of
+`hashtagbasit/SteamOS-ARM-Port`, not fork downloads, unique users or validated
+devices. These resources do not certify a build from this fork. Pocket EVO notes cover the
 [platform and build](docs/pocket-evo-build.md),
 [sleep/wake](docs/pocket-evo-sleep-wake.md) and
 [Android LED behavior](docs/pocket-evo-led.md). General architecture is in
