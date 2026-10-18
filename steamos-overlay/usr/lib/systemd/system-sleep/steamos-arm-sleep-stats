@@ -1,0 +1,164 @@
+#!/usr/bin/python3
+"""Passive qcom_stats samples around systemd-sleep; never prepare sleep here."""
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import syslog
+import tempfile
+import time
+
+STATS = Path('/sys/kernel/debug/qcom_stats')
+STATE = Path('/run/steamos-arm-sleep-stats')
+BOOT_ID = Path('/proc/sys/kernel/random/boot_id')
+WAKE_IRQ = Path('/sys/power/pm_wakeup_irq')
+INTERRUPTS = Path('/proc/interrupts')
+# Only the passive qcom_print_stats files. In particular, reading ddr_stats
+# can SEND a QMP freqsync request to firmware; do not open it or unknown files.
+NAMES = ('aosd', 'cxsd', 'ddr', 'vmin', 'vlow', 'modem', 'wpss', 'adsp',
+         'cdsp', 'cdsp1', 'gpdsp0', 'gpdsp1', 'soccp', 'dcp', 'slpi', 'gpu',
+         'display', 'adsp_island', 'slpi_island', 'apss')
+
+
+def log(message):
+    syslog.openlog('sleep-stats')
+    syslog.syslog(syslog.LOG_INFO, message)
+
+
+def counters(text):
+    values = []
+    for label, bits in (('Count', 32), ('Accumulated Duration', 64)):
+        matches = re.findall(r'^' + label + r':[ \t]*([0-9]+)[ \t]*$', text, re.M)
+        if len(matches) != 1 or int(matches[0]) >= 1 << bits:
+            raise ValueError('missing, duplicate or invalid ' + label)
+        values.append(int(matches[0]))
+    return values
+
+
+def snapshot():
+    values, unavailable = {}, []
+    for name in NAMES:
+        path = STATS / name
+        if path.is_symlink():
+            unavailable.append(name)
+            continue
+        try:
+            # One read keeps count and duration in the same kernel sample.
+            values[name] = counters(path.read_text())
+        except FileNotFoundError:
+            continue
+        except (OSError, UnicodeError, ValueError):
+            unavailable.append(name)
+    return values, unavailable
+
+
+def publish(data):
+    fd, tmp = tempfile.mkstemp(prefix='.sleep-stats-', dir=STATE.parent)
+    try:
+        with os.fdopen(fd, 'w') as out:
+            json.dump(data, out)
+        os.replace(tmp, STATE)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def wake_irq():
+    try:
+        irq = WAKE_IRQ.read_text().strip()
+        if not irq.isascii() or not irq.isdecimal() or int(irq) == 0:
+            return '?'
+        # The kernel reports the last IRQ, not necessarily this attempt's cause.
+        for line in INTERRUPTS.read_text().splitlines():
+            fields = line.split()
+            if fields and fields[0] == irq + ':':
+                return irq + ' ' + fields[-1]
+        return irq
+    except (OSError, UnicodeError):
+        return '?'
+
+
+def delta(before, after):
+    parts = []
+    for name in sorted(before.keys() | after.keys()):
+        if name not in before or name not in after:
+            parts.append(name + ':unpaired')
+            continue
+        old, new = before[name], after[name]
+        if new[0] < old[0] or new[1] < old[1]:
+            # Cannot distinguish firmware reset from u32/u64 rollover. Do not
+            # fabricate a huge modular delta or use signed shell arithmetic.
+            parts.append(name + ':reset-or-wrap')
+            continue
+        parts.append(f'{name}:count+{new[0]-old[0]},ticks+{new[1]-old[1]}')
+    return ' '.join(parts) or 'no paired counters'
+
+
+def run(phase, action):
+    if phase not in ('pre', 'post'):
+        return
+    if phase == 'pre':
+        # A failed/missing sample must not leave an earlier pre usable by post.
+        STATE.unlink(missing_ok=True)
+        if not STATS.is_dir():
+            log('qcom_stats unavailable; skipped (helper never mounts debugfs)')
+            return
+        start = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
+        values, unavailable = snapshot()
+        if unavailable:
+            log('unavailable pre counters: ' + ','.join(unavailable))
+        if not values:
+            log('no valid pre counters; skipped')
+            return
+        publish({'boot': BOOT_ID.read_text().strip(), 'action': action,
+                 'start': start, 'values': values})
+        return
+    try:
+        raw = STATE.read_text()
+    except FileNotFoundError:
+        return
+    finally:
+        STATE.unlink(missing_ok=True)  # consume once, even if malformed
+    before = json.loads(raw)
+    if (not isinstance(before, dict)
+            or type(before.get('start')) is not int
+            or not 0 <= before['start'] < 1 << 64
+            or not isinstance(before.get('values'), dict)):
+        raise ValueError('invalid snapshot')
+    for name, pair in before['values'].items():
+        if (name not in NAMES or not isinstance(pair, list) or len(pair) != 2
+                or any(type(v) is not int or not 0 <= v < 1 << bits
+                       for v, bits in zip(pair, (32, 64)))):
+            raise ValueError('invalid saved counter')
+    if (before['boot'] != BOOT_ID.read_text().strip()
+            or before['action'] != action):
+        log('unpaired boot/action; skipped')
+        return
+    values, unavailable = snapshot()
+    elapsed = time.clock_gettime_ns(time.CLOCK_BOOTTIME) - before['start']
+    if elapsed < 0:
+        log('invalid boottime interval; skipped')
+        return
+    # BOOTTIME includes suspend, but also hook/preparation overhead and failed
+    # attempts. Raw firmware ticks avoid assuming every timer runs at 19.2 MHz.
+    message = (f'{action} hook interval {elapsed / 1e9:.3f}s: '
+               + delta(before['values'], values)
+               + '; last wake IRQ ' + wake_irq())
+    if unavailable:
+        message += '; unavailable post counters: ' + ','.join(unavailable)
+    log(message)
+
+
+def main():
+    try:
+        if len(sys.argv) == 3:
+            run(sys.argv[1], sys.argv[2])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, UnicodeError) as error:
+        log('diagnostics unavailable: ' + str(error))
+    # Diagnostics must not veto a suspend or resume.
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

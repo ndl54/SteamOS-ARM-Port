@@ -677,6 +677,18 @@ ln -sfn ../konkr-sleep.service "$R/usr/lib/systemd/system/sleep.target.wants/kon
 rm -f "$R/usr/lib/systemd/system/multi-user.target.wants/sshd.service" \
   "$R/etc/systemd/system/multi-user.target.wants/sshd.service" \
   "$R/var/lib/overlays/etc/upper/systemd/system/multi-user.target.wants/sshd.service"
+# Discover: exclude distro PackageKit updates, keeping Flatpak available.
+# Its PackageKit backend offered Valve's pacman
+# updates for the whole system, which replace this port's own packages (a
+# Legion Y700 Gen 4 tester's system stopped working after one), and its update
+# checks rewrite pacman's sync databases under /usr, which the updater then
+# finds changed ("this system differs", issue #64).
+# The notifier loads its own plugin, independently of the Discover UI.
+rm -f "$R/usr/lib/qt6/plugins/discover/packagekit-backend.so" \
+      "$R/usr/lib/qt6/plugins/discover-notifier/DiscoverPackageKitNotifier.so"
+# Sleep diagnostics in the journal (sleep-stats): counter deltas, last wake IRQ.
+install -Dm0755 "$OVL/usr/lib/systemd/system-sleep/steamos-arm-sleep-stats" \
+  "$R/usr/lib/systemd/system-sleep/steamos-arm-sleep-stats"
 # Discover: fetch the Flathub catalog (never downloaded on a fresh image).
 mkdir -p "$R/usr/lib/systemd/system/timers.target.wants"
 ln -sfn ../konkr-flatpak-appstream.timer \
