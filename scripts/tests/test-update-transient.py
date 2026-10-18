@@ -19,6 +19,20 @@ PYC = 'root/usr/lib/example/__pycache__/module.cpython-313.pyc'
 DB = 'root/usr/lib/holo/pacmandb/sync/core.db'
 
 
+def select_blobs(inventory, bases, stale_pyc=lambda key: False):
+    # Execute only pure selection code, never the builder entrypoint or any
+    # inventory, package, signing, filesystem or subprocess operations.
+    source = (REPO / 'scripts/build-update-v2.py').read_text()
+    tree = ast.parse(source)
+    predicate = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'rewritten')
+    selection = next(n for n in tree.body if isinstance(n, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == 'blobs' for t in n.targets))
+    env = {'inventory': inventory, 'bases': bases, 'stale_pyc': stale_pyc}
+    exec(ast.get_source_segment(source, predicate), env)
+    exec(ast.get_source_segment(source, selection), env)
+    return env['blobs']
+
+
 class TransientTests(unittest.TestCase):
     def setUp(self):
         self.stack = ExitStack()
@@ -214,29 +228,60 @@ class TransientTests(unittest.TestCase):
             p.parent.unlink(); p.parent.mkdir(); p.write_bytes(b'drifted')
 
     def test_producer_blob_selection_in_isolation(self):
-        # Extract ONLY the pure predicate and selection expression. Never import
-        # or execute the builder's CLI, filesystem, signing or package stages.
-        source = (REPO / 'scripts/build-update-v2.py').read_text()
-        tree = ast.parse(source)
-        predicate = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'rewritten')
-        selection = next(n for n in tree.body if isinstance(n, ast.Assign)
-                         and any(isinstance(t, ast.Name) and t.id == 'blobs' for t in n.targets))
         keys = (DB, DB + '.sig', PYC, 'root/usr/bin/app',
                 'root/usr/lib/holo/pacmandb/local/pkg/desc', DB.replace('/sync/', '/sync-other/'))
         inventory = {k: {'f': [0, 0, 0, 1, str(i), {}]} for i, k in enumerate(keys)}
         inventory['root/usr/lib/holo/pacmandb/sync/link'] = {'l': ['elsewhere', 0, 0]}
         base = {k: e['f'][4] for k, e in inventory.items() if 'f' in e}
-        env = {'inventory': inventory, 'bases': [base], 'stale_pyc': lambda k: k == PYC}
-        exec(ast.get_source_segment(source, predicate), env)
-        code = ast.get_source_segment(source, selection)
-        exec(code, env)
-        self.assertEqual(env['blobs'], ['0', '1', '2'])
-        env['bases'] = [base, dict(base, **{'root/usr/bin/app': 'older'})]
-        exec(code, env)
-        self.assertEqual(env['blobs'], ['0', '1', '2', '3'])
-        env['bases'] = []
-        exec(code, env)
-        self.assertEqual(env['blobs'], ['0', '1', '2', '3', '4', '5'])
+        stale = lambda k: k == PYC
+        self.assertEqual(select_blobs(inventory, [base], stale), ['0', '1', '2'])
+        self.assertEqual(select_blobs(inventory, [base, dict(base, **{'root/usr/bin/app': 'older'})], stale),
+                         ['0', '1', '2', '3'])
+        self.assertEqual(select_blobs(inventory, [], stale), ['0', '1', '2', '3', '4', '5'])
+
+    def test_front_map_payload_selection_and_entry_types(self):
+        keys = (*U.SETTINGS, *(k + '.bak' for k in U.SETTINGS),
+                *(k.replace('/capability_maps.d/', '/capability_maps.d-other/') for k in U.SETTINGS))
+        inventory = {k: {'f': [0, 0, 0, 1, str(i), {}]} for i, k in enumerate(keys)}
+        base = {k: e['f'][4] for k, e in inventory.items()}
+        self.assertEqual(select_blobs(inventory, [base, base.copy()]), ['0', '1'])
+        self.assertEqual(select_blobs(inventory, []), ['0', '1', '2', '3', '4', '5'])
+        before = copy.deepcopy(inventory)
+        inventory[U.SETTINGS[1]]['f'][4] = '0'  # content-addressed deduplication
+        self.assertEqual(select_blobs(inventory, [dict(base, **{U.SETTINGS[1]: '0'})]), ['0'])
+        for entry in ({'l': ['elsewhere']}, {'d': [493, 0, 0]}, {'w': []}):
+            inventory = copy.deepcopy(before)
+            inventory[U.SETTINGS[0]] = entry
+            self.assertEqual(select_blobs(inventory, [base]), ['1'])
+
+    def test_same_base_front_maps_repair_drift_and_roll_back(self):
+        target, plan = self.fixture(U.SETTINGS)
+        signed = copy.deepcopy(target)
+        base = {k: e['f'][4] for k, e in target.items() if 'f' in e}
+        blobs = select_blobs(target, [base])
+        # Even an older planner with no settings exception has every needed blob.
+        self.assertFalse({target[k]['f'][4] for k in plan['write']} - set(blobs))
+        old = {'format': 2, 'version': '1.3', 'files': {}}
+        U.write_json(self.root / U.INVENTORY, old)
+        self.drop(plan, target, blobs)
+        self.assertEqual(set(plan['write']), set(U.SETTINGS))
+        self.assertEqual(plan.get('skip', []), [])
+        self.assertEqual(target, signed)
+        for sha in blobs:
+            blob = self.work / 'blobs' / sha[:2] / sha
+            blob.parent.mkdir(parents=True, exist_ok=True)
+            blob.write_bytes(b'release')
+        self.save(plan, target)
+        U.backup_plan(plan, self.root, self.home, self.work)
+        U.apply2(self.root, self.boot, self.home, self.work)
+        for key in U.SETTINGS:
+            self.assertEqual(self.path(key).read_bytes(), b'release')
+            self.assertEqual(U.recorded(self.root)[key][2], target[key]['f'][4])
+        with patch.object(U, 'install_kernel'):
+            U.restore2(self.root, self.boot, self.home, self.work)
+        for key in U.SETTINGS:
+            self.assertEqual(self.path(key).read_bytes(), b'drifted')
+        self.assertEqual(json.loads((self.root / U.INVENTORY).read_text()), old)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
