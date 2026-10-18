@@ -360,10 +360,12 @@ function Content() {
                     try {
                         if (await bootAndroid()) return;
                     } catch (e) {}
-                    toaster.toast({ title: "Restart into ZUXOS failed",
-                        body: "Check the system log before trying again. Boot storage may already have changed." });
+                    toaster.toast({ title: `${st.dualboot_label || "Restart into Android"} failed`,
+                        body: st.has_flip
+                            ? "Check the system log before trying again. Boot storage may already have changed."
+                            : "Could not confirm the boot-menu request. Check the system log before trying again." });
                 },
-                children: "Restart into ZUXOS",
+                children: st.dualboot_label || "Restart into Android",
             })) : null,
             st.has_flip ? row(jsx(DFL.ToggleField, {
                 label: "Flip screen",

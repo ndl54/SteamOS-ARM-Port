@@ -45,7 +45,36 @@ def tablet() -> bool:
     return any(c in compat for c in ("lenovo,tb321fu", "lenovo,elden", "lenovo,baldur"))
 
 
+# Exact root DT board/SoC pairs from the shipped device definitions and
+# ROCKNIX DTS used by these recipes. This is not installed-ABL attestation.
+HANDHELD_BOARDS = {
+    "qcom,sm8250": {"retroidpocket,rp5", "retroidpocket,rpflip2", "retroidpocket,rpmini",
+                    "retroidpocket,rpminiv2", "ayn,thor-lite", "mangmi,pocket-max",
+                    "mangmi,air-y-pro", "ayaneo,pocket-micro2"},
+    "qcom,sm8550": {"ayn,odin2", "ayn,odin2mini", "ayn,odin2portal", "ayn,thor",
+                    "retroidpocket,rp6", "retroidpocket,rpnova", "ayaneo,pocketace",
+                    "ayaneo,pocketdmg", "ayaneo,pocketds", "ayaneo,pocketevo", "ayaneo,pocket-s1"},
+    "qcom,sm8650": {"konkr,pocket-fit", "ayaneo,pocket-s2"},
+    "qcom,sm8750": {"ayn,odin3", "konkr,pocket-fit-elite"},
+}
+
+
+def handheld_boot_menu() -> bool:
+    try:
+        with open("/sys/firmware/devicetree/base/compatible", "rb") as fh:
+            compat = set(fh.read().decode(errors="replace").split("\0"))
+    except OSError:
+        return False
+    if any(c.startswith("lenovo,") for c in compat):
+        return False
+    matches = [(soc, board) for soc, boards in HANDHELD_BOARDS.items()
+               for board in boards if board in compat]
+    return len(matches) == 1 and matches[0][0] in compat
+
+
 def dualboot() -> bool:
+    if not tablet():
+        return handheld_boot_menu()
     # Share the exact board/device/slot checks with the mutating helper.
     try:
         tool = ["/usr/lib/steamos-arm/gen5-android", "--check"] if gen5() else ["/usr/lib/steamos-arm/tablet-slot", "check"]
@@ -232,9 +261,15 @@ class Plugin:
             "menu_clicks": st["menu_clicks"],
             "has_flip": tablet(),
             "flip": os.path.exists(FLIP),
+            # Tablets: SteamOS on the microSD card next to Android. Handhelds:
+            # the bootloader menu, assuming ROCKNIX ABL is installed.
             "has_dualboot": await asyncio.to_thread(dualboot),
-            "dualboot_text": ("SteamOS runs from the microSD card. This restarts into ZUXOS; to come back, "
-                              + ("use Switch to SteamOS in KernelSU" if gen5() else "run fastboot set_active b")),
+            "dualboot_label": ("Restart into ZUI" if gen5() else "Restart into ZUXOS") if tablet() else "Restart into Android",
+            "dualboot_text": ("SteamOS runs from the microSD card. This restarts into "
+                              + ("ZUI; to come back, use Switch to SteamOS in KernelSU" if gen5()
+                                 else "ZUXOS; to come back, run fastboot set_active b")) if tablet() else
+                             ("Requires ROCKNIX ABL and a retained Android installation. Restarts into its boot menu: choose Switch boot mode until it says Android, "
+                              "then Start. To come back, restart holding Volume Down and switch it back to Linux."),
             "has_motors": any("HID_ID=0003:00004001:00000428" in rd(f"{d}/device/uevent")
                               for d in glob.glob("/sys/class/hidraw/hidraw*")),
             "buttons": st["buttons"],
@@ -356,15 +391,26 @@ class Plugin:
         return os.path.exists(FLIP)
 
     async def boot_android(self, **_: Any) -> bool:
-        """Dual boot (SteamOS on the microSD card, ZUXOS on slot A): make slot A
-        active and restart into ZUXOS."""
+        """Tablets use their checked storage helpers; handhelds request the boot menu.
+
+        A successful return means the request was accepted, not that Android booted.
+        """
         if not await asyncio.to_thread(dualboot):
             return False
         try:
-            tool = ["/usr/lib/steamos-arm/gen5-android"] if gen5() else ["/usr/lib/steamos-arm/tablet-slot", "android"]
-            r = await asyncio.to_thread(subprocess.run, tool)
+            if tablet():
+                tool = ["/usr/lib/steamos-arm/gen5-android"] if gen5() else ["/usr/lib/steamos-arm/tablet-slot", "android"]
+                # Helpers own locking, backup, write/readback and reboot ordering.
+                # Do not time out/kill a helper in the middle of a storage write.
+                r = await asyncio.to_thread(subprocess.run, tool)
+            else:
+                if os.geteuid() != 0 or not handheld_boot_menu():
+                    return False
+                r = await asyncio.to_thread(subprocess.run,
+                    ["systemctl", "--no-block", "--no-ask-password", "reboot", "--reboot-argument=bootloader"],
+                    timeout=10)
             return r.returncode == 0
-        except OSError:
+        except (OSError, subprocess.TimeoutExpired):
             return False
 
     async def set_power_led(self, on: bool = True, **_: Any) -> bool:
