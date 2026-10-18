@@ -2,7 +2,8 @@
 # SteamOS ARM on the Lenovo Legion Y700 Gen 5 (TB323FU), from a PC (Linux or
 # macOS; Windows: WSL2) with adb. Android stays on the tablet.
 #
-#   install-gen5.sh [--switch]
+#   install-gen5.sh [--switch|-switch]
+# Optional: ADB=/path/to/adb[.exe], ANDROID_SERIAL=<tablet serial>.
 #
 # Before: the tablet rooted without unlocking (LTBox + KernelSU, ZUI
 # 18.0.12.104), adb with root allowed for the shell, and the microSD card
@@ -26,32 +27,81 @@ MANIFEST="$HERE/firmware.tsv"
 MODULE="$HERE/switch-to-steamos"
 WANT_FW=18.0.12.104
 D=/data/adb/steamos-gen5
-SWITCH=0
-case "${1:-}" in --switch) SWITCH=1;; "") ;; *) echo "usage: install-gen5.sh [--switch]" >&2; exit 2;; esac
-W="$(mktemp -d)"; locked=0
-cleanup() {
-  if [[ $locked == 1 ]]; then su_ "rmdir $D/operation.lock" || echo 'Remote lock retained; inspect before retrying' >&2; fi
-  rm -rf "$W"
-}
-trap cleanup EXIT
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+SWITCH=0
+[[ $# -le 1 ]] || die "usage: install-gen5.sh [--switch|-switch]"
+case "${1:-}" in --switch|-switch) SWITCH=1;; "") ;; *) die "usage: install-gen5.sh [--switch|-switch]";; esac
+# Resolve before defining adb(); an explicit executable may contain spaces.
+ADB="${ADB:-}"
+if [[ -z "$ADB" ]]; then
+  ADB="$(command -v adb || command -v adb.exe || true)"
+fi
+[[ -n "$ADB" ]] && ADB="$(command -v "$ADB")" && [[ -f "$ADB" && -x "$ADB" ]] \
+  || die "needs adb (or ADB=/mnt/c/platform-tools/adb.exe from WSL)"
+WIN=0
+case "$ADB" in *.[eE][xX][eE]) WIN=1;; esac
+if ((WIN)); then
+  command -v wslpath >/dev/null || die "Windows adb.exe requires wslpath (run inside WSL)"
+fi
+serial=""
+adb() {
+  if [[ -n "$serial" ]]; then command "$ADB" -s "$serial" "$@"; else command "$ADB" "$@"; fi
+}
+host() {
+  if ((WIN)); then wslpath -w "$1"; else printf '%s' "$1"; fi
+}
+# Convert only local sources, never the Android destination. Check conversion
+# separately: a failed command substitution inside adb's argv can be masked.
+push() {
+  local src converted
+  local -a sources=()
+  while [[ $# -gt 1 ]]; do
+    src="$1"; shift
+    converted="$(host "$src")" && [[ -n "$converted" ]] || return 1
+    sources+=("$converted")
+  done
+  adb push "${sources[@]}" "$1"
+}
 su_() { adb shell "su -c '$*'" | tr -d '\r'; }
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
-for t in adb python3 tar; do command -v $t >/dev/null || die "needs $t"; done
+for t in python3 tar; do command -v "$t" >/dev/null || die "needs $t"; done
 for f in "$KERNEL" "$MANIFEST" "$MODULE/action.sh" "$HERE/boot-repack.py" "$MODULE/storage.sh"; do [[ -e "$f" ]] || die "missing $f (run from the unpacked release)"; done
+# Keep Windows-readable work files beside the release; native hosts keep /tmp.
+if ((WIN)); then W="$(mktemp -d "$HERE/.work.XXXXXX")"; else W="$(mktemp -d)"; fi
+locked=0
+cleanup() {
+  local status=$?
+  if [[ $locked == 1 ]]; then
+    su_ "rmdir $D/operation.lock" || { echo 'Remote lock retained; inspect before retrying' >&2; [[ $status != 0 ]] || status=1; }
+  fi
+  rm -rf "$W" || { [[ $status != 0 ]] || status=1; }
+  exit "$status"
+}
+trap cleanup EXIT
+# Validate all static Windows paths before acquiring a remote lock or writing.
+if ((WIN)); then
+  for f in "$W" "$MODULE/storage.sh" "$MODULE/action.sh"; do
+    converted="$(host "$f")" && [[ -n "$converted" ]] || die "cannot convert Windows host path: $f"
+  done
+fi
 
 say "1. The tablet"
-[[ "$(adb get-state 2>/dev/null)" == device ]] || die "no tablet over adb (USB debugging on, one device)"
-model="$(adb shell getprop ro.product.model | tr -d '\r') $(adb shell getprop ro.product.device | tr -d '\r')"
-[[ "${model%% *}" == TB323FU || "${model#* }" == baldur ]] || die "this is not a Legion Y700 Gen 5 ($model)"
+# get-serialno honors ANDROID_SERIAL; without it adb rejects multiple devices.
+# Pin that choice for every later operation, including cleanup and --switch.
+serial="$(adb get-serialno | tr -d '\r')" || die "cannot select tablet (use ANDROID_SERIAL for multiple devices)"
+[[ -n "$serial" && "$serial" != unknown && "$serial" != *[[:space:]]* ]] || die "invalid adb serial"
+state="$(adb get-state 2>/dev/null | tr -d '\r')" && [[ "$state" == device ]] || die "no tablet over adb (USB debugging on)"
+model="$(adb shell getprop ro.product.model | tr -d '\r')" || die "cannot read tablet model"
+device="$(adb shell getprop ro.product.device | tr -d '\r')" || die "cannot read tablet device"
+[[ "$model" == TB323FU || "$device" == baldur ]] || die "this is not a Legion Y700 Gen 5 ($model $device)"
 fw="$(adb shell getprop ro.build.display.id | tr -d '\r')"
 echo "firmware: $fw"
 grep -qF "$WANT_FW" <<<"$fw" || die "only ZUI $WANT_FW is known to work (newer firmware hangs at boot and can't be downgraded)"
-[[ "$(su_ id)" == *"uid=0"* ]] || die "no root for the adb shell (KernelSU: allow Shell)"
+root_id="$(su_ id)" && [[ "$root_id" == *"uid=0"* ]] || die "no root for the adb shell (KernelSU: allow Shell)"
 su_ "mkdir -p $D && chmod 700 $D && mkdir $D/operation.lock" || die "another Gen5 operation is active"
 locked=1
-adb push "$MODULE/storage.sh" /data/local/tmp/sg5-storage.sh >/dev/null
+push "$MODULE/storage.sh" /data/local/tmp/sg5-storage.sh >/dev/null
 su_ "mv /data/local/tmp/sg5-storage.sh $D/storage.sh && chmod 600 $D/storage.sh"
 su_ ". $D/storage.sh; check_boot" || die "boot storage validation failed"
 a="$(su_ ". $D/storage.sh; check_boot; echo \"\$a\"" | tail -1)"
@@ -167,7 +217,7 @@ echo "$android" > "$W/android-boot.sha256"
 say "   ... onto the microSD card"
 # Validate one physical SD, exact labels, distinct partitions and no existing
 # mounts/holders. Never mount a first label match from an unrelated disk.
-adb push "$W/firmware.tar" "$W/android-boot.sha256" /data/local/tmp/ >/dev/null
+push "$W/firmware.tar" "$W/android-boot.sha256" /data/local/tmp/ >/dev/null
 cat > "$W/card.sh" <<'CARD'
 set -eu
 . /data/adb/steamos-gen5/storage.sh
@@ -194,7 +244,7 @@ mv "$m/firmware.tar.new" "$m/firmware.tar"
 mv "$m/android-boot.sha256.new" "$m/android-boot.sha256"
 sync
 CARD
-adb push "$W/card.sh" /data/local/tmp/sg5-card.sh >/dev/null
+push "$W/card.sh" /data/local/tmp/sg5-card.sh >/dev/null
 su_ "sh /data/local/tmp/sg5-card.sh" || die "could not stage firmware on the card"
 
 echo "firmware and the Android image hash are on the card"
@@ -205,15 +255,15 @@ linux="$(sha "$W/linux.img")"
 echo "SteamOS boot image $linux"
 
 say "5. Switch to SteamOS (KernelSU module)"
-adb push "$W/linux.img" /data/local/tmp/steamos-gen5.img >/dev/null
+push "$W/linux.img" /data/local/tmp/steamos-gen5.img >/dev/null
 su_ "mkdir -p $D && mv /data/local/tmp/steamos-gen5.img $D/linux.img && echo $linux > $D/linux.img.sha256 && chmod 600 $D/linux.img"
 [[ "$(su_ sha256sum $D/linux.img | cut -d' ' -f1)" == "$linux" ]] || die "the staged image doesn't verify on the tablet"
 rm -rf "$W/module"; cp -r "$MODULE" "$W/module"; echo "$android" > "$W/module/android.sha256"
-(cd "$W/module" && python3 -c "import shutil; shutil.make_archive('$W/switch-to-steamos', 'zip', '.')")
-adb push "$W/switch-to-steamos.zip" /data/local/tmp/ >/dev/null
+(cd "$W/module" && python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", ".")' "$W/switch-to-steamos")
+push "$W/switch-to-steamos.zip" /data/local/tmp/ >/dev/null
 su_ "cp /data/local/tmp/switch-to-steamos.zip $D/ && /data/adb/ksud module install /data/local/tmp/switch-to-steamos.zip >/dev/null 2>&1" \
   || echo "note: install switch-to-steamos.zip from $D in the KernelSU app"
-adb push "$MODULE/action.sh" /data/local/tmp/sg5-action.sh >/dev/null
+push "$MODULE/action.sh" /data/local/tmp/sg5-action.sh >/dev/null
 su_ "mv /data/local/tmp/sg5-action.sh $D/action.sh && chmod 755 $D/action.sh"
 echo "staged. In Android: KernelSU > Modules > Switch to SteamOS > Action"
 
